@@ -156,7 +156,10 @@ def _imagen_para_qss(nombre: str, tono: str, lado: int) -> str:
 
 def aplicar(app: QApplication, tema: str = "claro", escala: float = 1.0, fuente: str = "") -> None:
     estado.nombre = paleta_efectiva(tema, app)
-    estado.escala = float(escala) if escala else 1.0
+    try:  # nunca fuera de los tamaños ofrecidos, venga de donde venga el valor
+        estado.escala = min(max(float(escala), ESCALAS[0][1]), ESCALAS[-1][1])
+    except (TypeError, ValueError):
+        estado.escala = 1.0
     estado.fuente = fuente or FUENTE_POR_DEFECTO
     _cache_iconos.clear()
     app.setStyle("Fusion")

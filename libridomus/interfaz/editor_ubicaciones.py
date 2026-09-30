@@ -51,7 +51,7 @@ class DialogoNuevaUbicacion(QDialog):
         self.descripcion = QLineEdit()
         dentro = ubicaciones.ruta_texto(con, padre_id, incluir_raiz=True) if padre_id else "(nivel superior)"
         formulario = QFormLayout()
-        formulario.addRow("Dentro de:", QLabel(dentro, objectName="ruta"))
+        formulario.addRow("Dentro de:", QLabel(dentro, objectName="ruta", textFormat=Qt.TextFormat.PlainText))
         formulario.addRow("Nombre:", self.nombre)
         formulario.addRow("Tipo:", self.tipo)
         formulario.addRow("Código:", self.codigo)
@@ -201,7 +201,7 @@ class EditorUbicaciones(QDialog):
         self.codigo = QLineEdit()
         self.descripcion = QPlainTextEdit()
         self.descripcion.setMaximumHeight(90)
-        self.ruta = QLabel(objectName="ruta", wordWrap=True)
+        self.ruta = QLabel(objectName="ruta", wordWrap=True, textFormat=Qt.TextFormat.PlainText)
         self.contenido = QLabel()
         self.b_guardar = QPushButton("Guardar cambios")
         self.b_codigo = QPushButton("Sugerir código")
@@ -270,8 +270,9 @@ class EditorUbicaciones(QDialog):
     def _guardar(self):
         id_ = self.arbol.id_actual()
         try:
-            ubicaciones.actualizar(self.con, id_, self.nombre.text(), self.tipo.currentData(),
-                                   self.codigo.text(), self.descripcion.toPlainText())
+            with comun.ocupado(None, "Guardando…"):
+                ubicaciones.actualizar(self.con, id_, self.nombre.text(), self.tipo.currentData(),
+                                       self.codigo.text(), self.descripcion.toPlainText())
         except ErrorUbicacion as e:
             comun.error(self, str(e))
             return
@@ -299,7 +300,8 @@ class EditorUbicaciones(QDialog):
 
     def _mover(self, ubicacion_id, nuevo_padre_id, indice):
         try:
-            ubicaciones.mover(self.con, ubicacion_id, nuevo_padre_id, indice)
+            with comun.ocupado(None, "Reorganizando…"):
+                ubicaciones.mover(self.con, ubicacion_id, nuevo_padre_id, indice)
         except ErrorUbicacion as e:
             comun.error(self, str(e))
         self._recargar(ubicacion_id)

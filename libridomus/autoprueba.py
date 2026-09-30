@@ -7,6 +7,7 @@ resultado se escribe en ``datos/autoprueba.txt`` y en el código de salida (0 = 
 
 import io
 import sqlite3
+import sys
 import tempfile
 import traceback
 from pathlib import Path
@@ -27,6 +28,7 @@ def ejecutar() -> int:
             ok = False
             lineas.append(f"[FALLO] {nombre}\n{traceback.format_exc()}")
 
+    paso("Python incluido", lambda: sys.version.split()[0])
     paso("SQLite", lambda: sqlite3.sqlite_version)
     paso("FTS5 sin acentos", _probar_fts)
     paso("Base de datos nueva", _probar_base_datos)

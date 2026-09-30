@@ -17,8 +17,12 @@ from ..datos import ubicaciones
 
 # ---------------------------------------------------------------- índice
 
-def reindexar(con: sqlite3.Connection, elemento_id: int) -> None:
-    """Actualiza la entrada del índice de búsqueda de un elemento."""
+def reindexar(con: sqlite3.Connection, elemento_id: int, rutas: dict[int, str] | None = None) -> None:
+    """Actualiza la entrada del índice de búsqueda de un elemento.
+
+    ``rutas`` (de ``ubicaciones.rutas_todas``) evita recalcular la ruta en cada elemento
+    cuando se reindexan muchos de golpe.
+    """
     con.execute("DELETE FROM elemento_fts WHERE rowid = ?", (elemento_id,))
     fila = con.execute("SELECT * FROM elemento WHERE id = ?", (elemento_id,)).fetchone()
     if fila is None:
@@ -34,7 +38,12 @@ def reindexar(con: sqlite3.Connection, elemento_id: int) -> None:
     texto = " ".join(str(v) for v in (
         fila["subtitulo"], fila["identificador"], fila["lugar_evento"], fila["fecha_desde"],
         fila["fecha_hasta"], fila["prestado_a"], fila["notas"], campos) if v)
-    ruta = ubicaciones.ruta_texto(con, fila["ubicacion_id"]) if fila["ubicacion_id"] else ""
+    if not fila["ubicacion_id"]:
+        ruta = ""
+    elif rutas is not None:
+        ruta = rutas.get(fila["ubicacion_id"], "")
+    else:
+        ruta = ubicaciones.ruta_texto(con, fila["ubicacion_id"])
     con.execute(
         "INSERT INTO elemento_fts (rowid, titulo, personas, etiquetas, texto, ubicacion) VALUES (?, ?, ?, ?, ?, ?)",
         (elemento_id, fila["titulo"], personas, etiquetas, texto, ruta),
@@ -43,18 +52,28 @@ def reindexar(con: sqlite3.Connection, elemento_id: int) -> None:
 
 def reindexar_ubicacion(con: sqlite3.Connection, ubicacion_id: int) -> None:
     """Tras renombrar o mover una ubicación cambia la ruta de todo lo que contiene."""
-    ids = ubicaciones.descendientes(con, ubicacion_id)
-    marcas = ",".join("?" * len(ids))
-    for fila in con.execute(f"SELECT id FROM elemento WHERE ubicacion_id IN ({marcas})", ids).fetchall():
-        reindexar(con, fila[0])
+    rutas = ubicaciones.rutas_todas(con)
+    for fila in con.execute(_ELEMENTOS_DEL_SUBARBOL, (ubicacion_id,)).fetchall():
+        reindexar(con, fila[0], rutas)
 
 
 def reindexar_todo(con: sqlite3.Connection) -> int:
-    con.execute("DELETE FROM elemento_fts")
-    ids = [f[0] for f in con.execute("SELECT id FROM elemento").fetchall()]
-    for id_ in ids:
-        reindexar(con, id_)
+    from ..datos.conexion import transaccion
+
+    with transaccion(con):  # sin transacción, cada escritura se confirmaría en disco por separado
+        con.execute("DELETE FROM elemento_fts")
+        ids = [f[0] for f in con.execute("SELECT id FROM elemento").fetchall()]
+        rutas = ubicaciones.rutas_todas(con)
+        for id_ in ids:
+            reindexar(con, id_, rutas)
     return len(ids)
+
+
+# Ubicación y todo lo que cuelga de ella, resuelto dentro de SQLite (sin listas de parámetros,
+# que SQLite limita a 32.766 por consulta).
+_SUBARBOL = ("WITH RECURSIVE sub(id) AS (SELECT ? UNION ALL "
+             "SELECT u.id FROM ubicacion u JOIN sub ON u.padre_id = sub.id)")
+_ELEMENTOS_DEL_SUBARBOL = f"{_SUBARBOL} SELECT id FROM elemento WHERE ubicacion_id IN (SELECT id FROM sub)"
 
 
 # ---------------------------------------------------------------- consulta
@@ -113,6 +132,7 @@ class Filtros:
     idioma: str = ""
     solo_prestados: bool = False
     solo_no_consumidos: bool = False
+    ids: list[int] | None = None          # limitar a estos elementos (p. ej. para refrescar una fila)
 
 
 @dataclass
@@ -141,6 +161,8 @@ def buscar(con: sqlite3.Connection, filtros: Filtros) -> list[Resultado]:
     parametros: list = []
     union_fts = ""
     orden = ""
+    prefijo_cte = ""
+    parametros_cte: list = []
 
     consulta = construir_consulta(filtros.texto)
     if consulta:
@@ -160,9 +182,16 @@ def buscar(con: sqlite3.Connection, filtros: Filtros) -> list[Resultado]:
     if filtros.sin_ubicacion:
         condiciones.append("e.ubicacion_id IS NULL")
     elif filtros.ubicacion_id is not None:
-        ids = ubicaciones.descendientes(con, filtros.ubicacion_id)
-        condiciones.append(f"e.ubicacion_id IN ({','.join('?' * len(ids))})")
-        parametros.extend(ids)
+        condiciones.append("e.ubicacion_id IN (SELECT id FROM sub)")
+        prefijo_cte = _SUBARBOL
+        parametros_cte = [filtros.ubicacion_id]
+    if filtros.ids is not None:
+        if not filtros.ids:
+            return []
+        if len(filtros.ids) > 900:
+            raise ValueError("Filtros.ids admite como máximo 900 elementos")
+        condiciones.append(f"e.id IN ({','.join('?' * len(filtros.ids))})")
+        parametros.extend(filtros.ids)
     if filtros.etiqueta:
         condiciones.append(
             "e.id IN (SELECT et.elemento_id FROM elemento_etiqueta et JOIN etiqueta t ON t.id = et.etiqueta_id"
@@ -186,6 +215,7 @@ def buscar(con: sqlite3.Connection, filtros: Filtros) -> list[Resultado]:
 
     donde = ("WHERE " + " AND ".join(condiciones)) if condiciones else ""
     sql = f"""
+        {prefijo_cte}
         SELECT e.id, e.tipo_id, t.nombre AS tipo, t.icono, e.titulo, e.subtitulo, e.anio, e.ubicacion_id,
                e.estado, e.idioma, e.consumido, e.valoracion, e.prestado_a, e.identificador, e.portada,
                c.creadores
@@ -206,7 +236,7 @@ def buscar(con: sqlite3.Connection, filtros: Filtros) -> list[Resultado]:
             valoracion=f["valoracion"], prestado_a=f["prestado_a"], identificador=f["identificador"],
             portada=f["portada"],
         )
-        for f in con.execute(sql, parametros)
+        for f in con.execute(sql, [*parametros_cte, *parametros])
     ]
     if not consulta:
         # Orden alfabético sin acentos. Se hace aquí (una clave por fila) y no con

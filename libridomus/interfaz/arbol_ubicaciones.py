@@ -83,7 +83,8 @@ class ArbolUbicaciones(QTreeWidget):
     # ------------------------------------------------------------ carga
 
     def cargar(self, seleccionar: int | None = None) -> None:
-        anterior = self.id_actual() if seleccionar is None else seleccionar
+        previo = self.id_actual()  # lo seleccionado antes de recargar
+        anterior = previo if seleccionar is None else seleccionar
         abiertos = self._ids_expandidos()
         self.blockSignals(True)
         self.clear()
@@ -109,11 +110,15 @@ class ArbolUbicaciones(QTreeWidget):
         for id_, item in items.items():
             if id_ in abiertos or item.parent() is None:
                 item.setExpanded(True)
-        self.blockSignals(False)
+        # Se vuelve a seleccionar lo que había SIN emitir la señal: recargar el árbol (p. ej. para
+        # actualizar contadores) no debe provocar una recarga completa de la lista.
         if anterior is not None:
             self.seleccionar(anterior)
         elif self.especiales:
             self.setCurrentItem(self.topLevelItem(0))
+        self.blockSignals(False)
+        if self.id_actual() != previo:  # solo si de verdad cambia la ubicación seleccionada
+            self.ubicacion_cambiada.emit(self.id_actual())
 
     def _nodo_especial(self, texto_: str, id_: int, icono: str, cuenta: int) -> None:
         item = QTreeWidgetItem(self)

@@ -26,7 +26,7 @@ from .editor_tipos import EditorTipos
 from .editor_ubicaciones import DialogoNuevaUbicacion, EditorUbicaciones
 from .capa_fluida import CapaFluida
 from .ficha_elemento import FichaElemento
-from .modelo_resultados import COLUMNAS, DelegadoRuta, ModeloResultados, OrdenadorResultados
+from .modelo_resultados import COLUMNAS, DelegadoRuta, ModeloResultados
 from .panel_detalle import PanelDetalle
 from .preferencias import Preferencias
 from .selector_ubicacion import elegir_ubicacion
@@ -210,10 +210,10 @@ class VentanaPrincipal(QMainWindow):
     def _crear_centro(self):
         # Tabla
         self.modelo = ModeloResultados(self)
-        self.ordenador = OrdenadorResultados(self)
-        self.ordenador.setSourceModel(self.modelo)
         self.tabla = QTableView()
-        self.tabla.setModel(self.ordenador)
+        # La tabla usa el modelo directamente (ordena el propio modelo): un intermediario duplicaba
+        # las consultas celda a celda y hacía lento seleccionarlo todo con decenas de miles de filas.
+        self.tabla.setModel(self.modelo)
         self.tabla.setSortingEnabled(True)
         self.tabla.sortByColumn(-1, Qt.SortOrder.AscendingOrder)  # orden de la búsqueda (relevancia)
         self.tabla.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -242,7 +242,7 @@ class VentanaPrincipal(QMainWindow):
         self._ajustar_tabla()
 
         # Título, contador y filtros
-        self.ruta_actual = QLabel(objectName="titulo_seccion")
+        self.ruta_actual = QLabel(objectName="titulo_seccion", textFormat=Qt.TextFormat.PlainText)
         self.contador = QLabel(objectName="contador")
         titulo = QHBoxLayout()
         titulo.addWidget(self.ruta_actual)
@@ -580,11 +580,7 @@ class VentanaPrincipal(QMainWindow):
         else:
             titulo = "Toda la colección"
         self.ruta_actual.setText(titulo)
-        self.total = self.con.execute("SELECT COUNT(*) FROM elemento").fetchone()[0]
-        n = len(resultados)
-        self.contador.setText(f"{n:,} elemento{'s' if n != 1 else ''}".replace(",", "."))
-        self.statusBar().showMessage(f"Mostrando {n} de {self.total} elementos")
-        self._actualizar_vacio()
+        self._actualizar_contadores()
         if seleccionar is not None:
             self.seleccionar_elemento(seleccionar)
         self._seleccion_cambiada()
@@ -617,6 +613,37 @@ class VentanaPrincipal(QMainWindow):
                                   "Añade algo aquí o arrastra elementos desde otra ubicación.", [b])
         self.pila.setCurrentWidget(self.vacio)
 
+    def refrescar_elementos(self, ids: list[int], seleccionar: int | None = None):
+        """Tras guardar, mover o prestar: solo se actualizan esas filas y los contadores.
+
+        Con 90.000 elementos, recargarlo todo tardaba ~3 s en cada guardado.
+        """
+        if not ids or len(ids) > 900:
+            self.refrescar_todo(seleccionar)
+            return
+        filtros = self.filtros_actuales()
+        filtros.ids = list(ids)
+        visibles = {r.id: r for r in busqueda.buscar(self.con, filtros)}
+        for id_ in ids:
+            if id_ in visibles:
+                self.modelo.poner(visibles[id_])
+            else:
+                self.modelo.quitar(id_)  # ya no cumple la búsqueda o los filtros (p. ej. se movió)
+        self.arbol.cargar()
+        self.arbol.filtrar(self.filtro_arbol.text())
+        self._llenar_filtros()
+        self._actualizar_contadores()
+        if seleccionar is not None:
+            self.seleccionar_elemento(seleccionar)
+        self._seleccion_cambiada()
+
+    def _actualizar_contadores(self):
+        self.total = self.con.execute("SELECT COUNT(*) FROM elemento").fetchone()[0]
+        n = self.modelo.rowCount()
+        self.contador.setText(f"{n:,} elemento{'s' if n != 1 else ''}".replace(",", "."))
+        self.statusBar().showMessage(f"Mostrando {n} de {self.total} elementos")
+        self._actualizar_vacio()
+
     def refrescar_todo(self, seleccionar: int | None = None):
         self.arbol.cargar()
         self.arbol.filtrar(self.filtro_arbol.text())
@@ -627,14 +654,20 @@ class VentanaPrincipal(QMainWindow):
     def seleccionar_elemento(self, elemento_id: int) -> None:
         for fila in range(self.modelo.rowCount()):
             if self.modelo.resultado(fila).id == elemento_id:
-                indice = self.ordenador.mapFromSource(self.modelo.index(fila, 1))
+                indice = self.modelo.index(fila, 1)
                 self.tabla.selectRow(indice.row())
                 self.tabla.scrollTo(indice)
                 return
 
     def ids_seleccionados(self) -> list[int]:
-        filas = {self.ordenador.mapToSource(i).row() for i in self.tabla.selectionModel().selectedRows()}
-        return [self.modelo.resultado(f).id for f in sorted(filas)]
+        """Ids de las filas seleccionadas, leídos por rangos (Ctrl+A con 100.000 filas es inmediato).
+
+        La tabla usa el modelo sin intermediarios: la fila que se ve es la misma fila del modelo.
+        """
+        filas: set[int] = set()
+        for rango in self.tabla.selectionModel().selection():
+            filas.update(range(rango.top(), rango.bottom() + 1))
+        return [self.modelo.filas[f].id for f in sorted(filas) if f < len(self.modelo.filas)]
 
     def _seleccion_cambiada(self):
         ids = self.ids_seleccionados()
@@ -656,7 +689,8 @@ class VentanaPrincipal(QMainWindow):
     def _mover_ubicacion(self, ubicacion_id: int, nuevo_padre_id: int | None, indice: int | None):
         """Arrastrar en el árbol: reordena plantas y ubicaciones. El orden se guarda en la base de datos."""
         try:
-            ubicaciones.mover(self.con, ubicacion_id, nuevo_padre_id, indice)
+            with comun.ocupado(self, "Reorganizando ubicaciones…"):
+                ubicaciones.mover(self.con, ubicacion_id, nuevo_padre_id, indice)
         except ErrorUbicacion as e:
             comun.error(self, str(e))
         self.arbol.cargar(ubicacion_id)
@@ -721,7 +755,7 @@ class VentanaPrincipal(QMainWindow):
         ficha.guardado.connect(guardados.append)
         ficha.exec()
         if guardados:
-            self.refrescar_todo(guardados[-1])
+            self.refrescar_elementos(guardados, guardados[-1])
 
     def editar(self):
         ids = self.ids_seleccionados()
@@ -729,7 +763,7 @@ class VentanaPrincipal(QMainWindow):
             return
         ficha = FichaElemento(self.con, elemento_id=ids[0], parent=self)
         if ficha.exec():
-            self.refrescar_todo(ids[0])
+            self.refrescar_elementos(ids, ids[0])
 
     def mover(self):
         ids = self.ids_seleccionados()
@@ -741,9 +775,10 @@ class VentanaPrincipal(QMainWindow):
 
     def mover_a(self, ids: list[int], destino: int | None):
         """Mueve elementos (también se usa al arrastrarlos desde la tabla al árbol)."""
-        elementos.mover(self.con, ids, destino)
+        with comun.ocupado(self, f"Moviendo {len(ids)} elemento(s)…"):
+            elementos.mover(self.con, ids, destino)
         ruta = ubicaciones.ruta_texto(self.con, destino) if destino else "Sin ubicación"
-        self.refrescar_todo()
+        self.refrescar_elementos(ids)
         self.statusBar().showMessage(f"{len(ids)} elemento(s) movido(s) a {ruta}", 6000)
 
     def prestar(self):
@@ -756,19 +791,19 @@ class VentanaPrincipal(QMainWindow):
         if not ok or not a_quien.strip():
             return
         elementos.prestar(self.con, ids, a_quien, date.today().isoformat())
-        self.refrescar_todo(ids[0])
+        self.refrescar_elementos(ids, ids[0])
 
     def devolver(self):
         ids = self.ids_seleccionados()
         if ids:
             elementos.devolver(self.con, ids)
-            self.refrescar_todo(ids[0])
+            self.refrescar_elementos(ids, ids[0])
 
     def alta_masiva(self):
         dialogo = AltaMasiva(self.con, self.ubicacion_para_nuevo(), self.f_tipo.currentData(), self)
         dialogo.exec()
         if dialogo.creados:
-            self.refrescar_todo(dialogo.creados[-1])
+            self.refrescar_elementos(dialogo.creados, dialogo.creados[-1])
 
     def editar_tipos(self):
         editor = EditorTipos(self.con, self)
@@ -785,8 +820,16 @@ class VentanaPrincipal(QMainWindow):
         else:
             pregunta = f"¿Borrar los {len(ids)} elementos seleccionados?"
         if comun.confirmar(self, pregunta + "\n\nEsta acción no se puede deshacer."):
-            elementos.borrar(self.con, ids)
-            self.refrescar_todo()
+            with comun.ocupado(self, f"Borrando {len(ids)} elemento(s)…"):
+                elementos.borrar(self.con, ids)
+                if len(ids) > 900:
+                    self.refrescar_todo()
+                    return
+                for id_ in ids:
+                    self.modelo.quitar(id_)
+            self.arbol.cargar()
+            self._actualizar_contadores()
+            self._seleccion_cambiada()
 
     def editar_ubicaciones(self):
         editor = EditorUbicaciones(self.con, self.ubicacion_para_nuevo(), self)
@@ -823,13 +866,15 @@ class VentanaPrincipal(QMainWindow):
         nombre = ubicaciones.obtener(self.con, ubic).codigo if ubic else "casa"
         destino = destino or self._pedir_pdf(f"inventario_{nombre}.pdf")
         if destino:
-            informes.inventario(self.con, ubic, destino)
+            with comun.ocupado(self, "Generando el inventario…"):
+                informes.inventario(self.con, ubic, destino, self._progreso_pdf)
             abrir and self._abrir(destino)
 
     def informe_prestados(self, destino: str | None = None, abrir: bool = True):
         destino = destino or self._pedir_pdf("prestados.pdf")
         if destino:
-            informes.prestados(self.con, destino)
+            with comun.ocupado(self, "Generando el informe…"):
+                informes.prestados(self.con, destino, self._progreso_pdf)
             abrir and self._abrir(destino)
 
     def informe_busqueda(self, destino: str | None = None, abrir: bool = True):
@@ -839,10 +884,14 @@ class VentanaPrincipal(QMainWindow):
             if self.busqueda.text().strip():
                 partes.append(f"búsqueda «{self.busqueda.text().strip()}»")
             # Se respeta el orden en que se ve la tabla.
-            filas = [self.modelo.resultado(self.ordenador.mapToSource(self.ordenador.index(i, 0)).row())
-                     for i in range(self.ordenador.rowCount())]
-            informes.resultados(filas, " · ".join(partes), destino)
+            filas = list(self.modelo.filas)
+            with comun.ocupado(self, "Generando el informe…"):
+                informes.resultados(filas, " · ".join(partes), destino, self._progreso_pdf)
             abrir and self._abrir(destino)
+
+    def _progreso_pdf(self, pagina: int, total: int | None):
+        self.statusBar().showMessage(f"Generando PDF: página {pagina}" + (f" de {total}…" if total else "…"))
+        QApplication.processEvents()
 
     # ------------------------------------------------------------ copias de seguridad
 
@@ -853,7 +902,8 @@ class VentanaPrincipal(QMainWindow):
             if not destino:
                 return
         try:
-            copias.copia_manual(self.con, destino)
+            with comun.ocupado(self, "Haciendo la copia de seguridad…"):
+                copias.copia_manual(self.con, destino)
         except OSError as e:
             comun.error(self, f"No se ha podido hacer la copia: {e}")
             return
@@ -868,7 +918,8 @@ class VentanaPrincipal(QMainWindow):
                                      "Se guardará antes una copia del estado actual."):
             return
         try:
-            copias.restaurar(self.con, dialogo.elegida)
+            with comun.ocupado(self, "Comprobando y restaurando la copia…"):
+                copias.restaurar(self.con, dialogo.elegida)
         except (copias.ErrorCopia, OSError, sqlite3.Error) as e:
             if not conexion_abierta(self.con):
                 # Falló después de cerrar la conexión: los datos anteriores siguen intactos,

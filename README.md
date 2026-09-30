@@ -24,7 +24,7 @@ Aplicación de escritorio para Windows, **sin conexión**, que registra dónde s
 ## Inicio rápido (desarrollo)
 
 ```powershell
-py -3.12 -m venv .venv
+py -3.13 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements-dev.txt
 .venv\Scripts\python -m pytest -q          # pruebas
 .venv\Scripts\python LibriDomus.py   # abrir el programa

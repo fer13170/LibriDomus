@@ -1,6 +1,6 @@
 # LibriDomus — Documento de diseño
 
-- **Versión:** 1.1 (LibriDomus)
+- **Versión:** 1.2 (LibriDomus)
 - **Fecha:** 30/09/2026
 - **Estado:** implementado (fases 0 a 5). Ver el apartado 9.
 
@@ -321,6 +321,18 @@ Los puntos pendientes del apartado 8 se han resuelto con los valores propuestos:
 - **Migración 2 del esquema:** icono por tipo de ubicación y paso de emojis a nombres de icono.
 - **Empaquetado autosuficiente:** `build/verificar_dependencias.py` comprueba en cada compilación que todo lo necesario va dentro del paquete (runtime de Visual C++ y de Python incluidos). La autoprueba del `.exe` se ejecuta con un PATH sin Python.
 - **Pruebas:** 132 automáticas.
+
+### Versión 1.2 — Robustez
+
+Tras las pruebas de estrés, rendimiento y seguridad (`docs/Informe_robustez.md`) se corrigieron todos los hallazgos:
+- **Arranque seguro:** instancia única, comprobación de integridad y recuperación guiada si los datos están dañados.
+- **Errores:** gestor global de errores con registro (`datosegistro.log`) y mensajes en castellano.
+- **Datos:** transacciones `BEGIN IMMEDIATE` con espera de 15 s, operaciones por tandas y validación de las preferencias.
+- **Copias:** restauración que exige el esquema exacto, rechaza disparadores y vistas, y extrae los ZIP con límites.
+- **Red:** solo HTTPS, con límite de tamaño y lectura defensiva de las respuestas.
+- **Interfaz:** texto plano para los datos del usuario, refresco parcial, informes por partes y cursor de espera.
+- **Entorno de compilación:** **Python 3.13.15** (OpenSSL 3.0.21, SQLite 3.50.4).
+- **Pruebas:** 178 automáticas.
 
 ---
 

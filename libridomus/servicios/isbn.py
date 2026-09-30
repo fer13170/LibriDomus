@@ -85,15 +85,33 @@ def validar(texto: str) -> str | None:
 
 # ---------------------------------------------------------------- red
 
-def descargar(url: str) -> bytes | None:
-    """GET de una URL. Devuelve None si el recurso no existe (404).
+TAMANO_MAXIMO = 5 * 2**20  # bytes: ninguna respuesta legítima (JSON o portada) se acerca a esto
 
+
+class _SoloHttps(urllib.request.HTTPRedirectHandler):
+    """urllib sigue por defecto redirecciones a http:// (sin cifrar). Aquí se rechazan."""
+
+    def redirect_request(self, req, fp, code, msg, headers, nueva_url):
+        if urllib.parse.urlparse(nueva_url).scheme != "https":
+            raise ErrorConsulta("El servicio ha intentado redirigir a una dirección no segura; se ha cancelado.")
+        return super().redirect_request(req, fp, code, msg, headers, nueva_url)
+
+
+_ABRIDOR = urllib.request.build_opener(_SoloHttps)
+
+
+def descargar(url: str, limite: int = TAMANO_MAXIMO) -> bytes | None:
+    """GET de una URL HTTPS. Devuelve None si el recurso no existe (404).
+
+    Rechaza direcciones y redirecciones que no sean HTTPS y respuestas de más de ``limite`` bytes.
     Las pruebas sustituyen esta función para no depender de Internet.
     """
+    if urllib.parse.urlparse(url).scheme != "https":
+        raise ErrorConsulta("Solo se consultan direcciones seguras (https).")
     peticion = urllib.request.Request(url, headers={"User-Agent": AGENTE})
     try:
-        with urllib.request.urlopen(peticion, timeout=TIEMPO_MAXIMO) as respuesta:
-            return respuesta.read()
+        with _ABRIDOR.open(peticion, timeout=TIEMPO_MAXIMO) as respuesta:
+            datos = respuesta.read(limite + 1)
     except urllib.error.HTTPError as error:
         if error.code == 404:
             return None
@@ -102,6 +120,9 @@ def descargar(url: str) -> bytes | None:
         raise ErrorConsulta(f"El servicio ha respondido con un error ({error.code}).") from error
     except (urllib.error.URLError, TimeoutError, OSError) as error:
         raise ErrorConsulta("No hay conexión a Internet o el servicio no responde.") from error
+    if len(datos) > limite:
+        raise ErrorConsulta("La respuesta del servicio es demasiado grande; se ha descartado.")
+    return datos
 
 
 def _json(url: str) -> dict | None:
@@ -109,43 +130,70 @@ def _json(url: str) -> dict | None:
     if datos is None:
         return None
     try:
-        return json.loads(datos.decode("utf-8"))
+        contenido = json.loads(datos.decode("utf-8"))
     except ValueError as error:
         raise ErrorConsulta("Respuesta no válida del servicio.") from error
+    if not isinstance(contenido, dict):
+        raise ErrorConsulta("Respuesta no válida del servicio.")
+    return contenido
+
+
+# Lectura defensiva: el servicio podría devolver tipos inesperados (una lista donde se espera
+# un texto, un objeto donde se espera una lista...). Nunca debe provocar un error del programa.
+
+def _texto(valor) -> str:
+    return valor.strip() if isinstance(valor, str) else ""
+
+
+def _lista(valor) -> list:
+    return valor if isinstance(valor, list) else []
+
+
+def _dic(valor) -> dict:
+    return valor if isinstance(valor, dict) else {}
 
 
 def _anio(texto: str) -> int | None:
-    encontrado = re.search(r"\b(1[5-9]\d\d|20\d\d)\b", texto or "")
+    encontrado = re.search(r"\b(1[5-9]\d\d|20\d\d)\b", texto if isinstance(texto, str) else "")
     return int(encontrado.group(1)) if encontrado else None
+
+
+_CLAVE_AUTOR = re.compile(r"^/authors/OL\d+A$")
+_CLAVE_OBRA = re.compile(r"^/works/OL\d+W$")
 
 
 def consultar_open_library(isbn: str) -> DatosLibro | None:
     edicion = _json(f"https://openlibrary.org/isbn/{isbn}.json")
-    if not edicion or not edicion.get("title"):
+    if not edicion or not _texto(edicion.get("title")):
         return None
     datos = DatosLibro(isbn=isbn, fuente="Open Library")
-    datos.titulo = edicion.get("title", "").strip()
-    datos.subtitulo = edicion.get("subtitle", "").strip()
-    editoriales = edicion.get("publishers") or []
-    datos.editorial = editoriales[0].strip() if editoriales else ""
-    datos.anio = _anio(edicion.get("publish_date", ""))
+    datos.titulo = _texto(edicion.get("title"))
+    datos.subtitulo = _texto(edicion.get("subtitle"))
+    editoriales = [_texto(e) for e in _lista(edicion.get("publishers")) if _texto(e)]
+    datos.editorial = editoriales[0] if editoriales else ""
+    datos.anio = _anio(edicion.get("publish_date"))
     paginas = edicion.get("number_of_pages")
-    datos.paginas = paginas if isinstance(paginas, int) and paginas > 0 else None
-    idiomas = edicion.get("languages") or []
+    datos.paginas = paginas if isinstance(paginas, int) and not isinstance(paginas, bool) and paginas > 0 else None
+    idiomas = _lista(edicion.get("languages"))
     if idiomas:
-        clave = idiomas[0].get("key", "").rsplit("/", 1)[-1]
+        clave = _texto(_dic(idiomas[0]).get("key")).rsplit("/", 1)[-1]
         datos.idioma = IDIOMAS_OPEN_LIBRARY.get(clave, "")
 
-    claves = [a.get("key") for a in edicion.get("authors", []) if a.get("key")]
-    if not claves and edicion.get("works"):
-        obra = _json(f"https://openlibrary.org{edicion['works'][0]['key']}.json") or {}
-        claves = [a.get("author", {}).get("key") for a in obra.get("authors", []) if a.get("author")]
+    # Solo claves con la forma esperada: así nunca se construye una dirección extraña.
+    claves = [_texto(_dic(a).get("key")) for a in _lista(edicion.get("authors"))]
+    claves = [c for c in claves if _CLAVE_AUTOR.match(c)]
+    obras = [_texto(_dic(o).get("key")) for o in _lista(edicion.get("works"))]
+    obras = [o for o in obras if _CLAVE_OBRA.match(o)]
+    if not claves and obras:
+        obra = _json(f"https://openlibrary.org{obras[0]}.json") or {}
+        claves = [_texto(_dic(_dic(a).get("author")).get("key")) for a in _lista(obra.get("authors"))]
+        claves = [c for c in claves if _CLAVE_AUTOR.match(c)]
     for clave in claves[:6]:
-        autor = _json(f"https://openlibrary.org{clave}.json") or {}
-        if autor.get("name"):
-            datos.autores.append(autor["name"].strip())
+        nombre = _texto((_json(f"https://openlibrary.org{clave}.json") or {}).get("name"))
+        if nombre:
+            datos.autores.append(nombre)
 
-    portadas = [c for c in edicion.get("covers", []) if isinstance(c, int) and c > 0]
+    portadas = [c for c in _lista(edicion.get("covers")) if isinstance(c, int) and not isinstance(c, bool) and c > 0]
     # Si la edición no trae portada se prueba la API de portadas por ISBN
     # (con default=false responde 404 en lugar de una imagen vacía).
     url = (f"https://covers.openlibrary.org/b/id/{portadas[0]}-L.jpg" if portadas
@@ -160,21 +208,23 @@ def consultar_open_library(isbn: str) -> DatosLibro | None:
 def consultar_google_books(isbn: str, clave: str) -> DatosLibro | None:
     parametros = urllib.parse.urlencode({"q": f"isbn:{isbn}", "key": clave})
     respuesta = _json(f"https://www.googleapis.com/books/v1/volumes?{parametros}") or {}
-    if not respuesta.get("items"):
+    elementos = _lista(respuesta.get("items"))
+    if not elementos:
         return None
-    info = respuesta["items"][0].get("volumeInfo", {})
+    info = _dic(_dic(elementos[0]).get("volumeInfo"))
     datos = DatosLibro(isbn=isbn, fuente="Google Books")
-    datos.titulo = info.get("title", "").strip()
-    datos.subtitulo = info.get("subtitle", "").strip()
-    datos.autores = [a.strip() for a in info.get("authors", [])]
-    datos.editorial = info.get("publisher", "").strip()
-    datos.anio = _anio(info.get("publishedDate", ""))
-    datos.paginas = info.get("pageCount") or None
-    datos.idioma = IDIOMAS_ISO2.get(info.get("language", ""), "")
-    imagen = (info.get("imageLinks") or {}).get("thumbnail", "")
+    datos.titulo = _texto(info.get("title"))
+    datos.subtitulo = _texto(info.get("subtitle"))
+    datos.autores = [_texto(a) for a in _lista(info.get("authors")) if _texto(a)]
+    datos.editorial = _texto(info.get("publisher"))
+    datos.anio = _anio(info.get("publishedDate"))
+    paginas = info.get("pageCount")
+    datos.paginas = paginas if isinstance(paginas, int) and not isinstance(paginas, bool) and paginas > 0 else None
+    datos.idioma = IDIOMAS_ISO2.get(_texto(info.get("language")), "")
+    imagen = _texto(_dic(info.get("imageLinks")).get("thumbnail"))
     if imagen:
         try:
-            datos.portada = descargar(imagen.replace("http://", "https://"))
+            datos.portada = descargar(imagen.replace("http://", "https://", 1))
         except ErrorConsulta:
             datos.portada = None
     return datos if datos.titulo else None
@@ -185,7 +235,11 @@ def consultar(texto_isbn: str, clave_google: str = "") -> DatosLibro | None:
     isbn = validar(texto_isbn)
     if isbn is None:
         raise ValueError("El ISBN no es válido (revisa las cifras).")
-    datos = consultar_open_library(isbn)
-    if datos is None and clave_google.strip():
-        datos = consultar_google_books(isbn, clave_google.strip())
+    try:
+        datos = consultar_open_library(isbn)
+        if datos is None and clave_google.strip():
+            datos = consultar_google_books(isbn, clave_google.strip())
+    except (TypeError, AttributeError, KeyError, IndexError, ValueError) as error:
+        # Última red de seguridad ante una respuesta con una forma que no se ha previsto.
+        raise ErrorConsulta("El servicio ha devuelto datos no válidos.") from error
     return datos

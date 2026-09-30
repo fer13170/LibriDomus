@@ -1,8 +1,16 @@
-"""Preferencias del programa, guardadas en datos/config.json."""
+"""Preferencias del programa, guardadas en datos/config.json.
+
+Cada valor leído se valida (tipo y rango). Si alguien edita el archivo a mano y pone algo
+inválido, se usa el valor por defecto de ese ajuste en lugar de impedir que el programa arranque.
+"""
 
 import json
+import os
 
 from .. import rutas
+
+ESCALAS_VALIDAS = (0.9, 1.0, 1.15, 1.3, 1.5)
+NUM_COLUMNAS = 7  # columnas de la lista de la ventana principal
 
 POR_DEFECTO = {
     "consultar_isbn": True,          # permitir consultas por Internet al autocompletar
@@ -19,22 +27,88 @@ POR_DEFECTO = {
 }
 
 
+def _booleano(valor):
+    return valor if isinstance(valor, bool) else None
+
+
+def _entero(minimo, maximo):
+    def validar(valor):
+        if isinstance(valor, bool) or not isinstance(valor, int):
+            return None
+        return min(max(valor, minimo), maximo)
+    return validar
+
+
+def _texto(maximo):
+    def validar(valor):
+        return valor[:maximo] if isinstance(valor, str) else None
+    return validar
+
+
+def _escala(valor):
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)):
+        return None
+    return min(ESCALAS_VALIDAS, key=lambda e: abs(e - float(valor)))  # la más cercana de las permitidas
+
+
+def _tema(valor):
+    return valor if valor in ("claro", "oscuro", "sistema") else None
+
+
+def _fuente(valor):
+    return valor.strip()[:80] if isinstance(valor, str) and valor.strip() else None
+
+
+def _columnas(valor):
+    if not isinstance(valor, list):
+        return None
+    return sorted({c for c in valor if isinstance(c, int) and not isinstance(c, bool) and 0 <= c < NUM_COLUMNAS and c != 1})
+
+
+VALIDADORES = {
+    "consultar_isbn": _booleano,
+    "clave_google_books": _texto(200),
+    "copias_a_conservar": _entero(1, 100),
+    "copia_al_cerrar": _booleano,
+    "etiquetas_titulos": _entero(0, 12),
+    "ventana": _texto(4000),
+    "tema": _tema,
+    "escala": _escala,
+    "fuente": _fuente,
+    "panel_detalle": _booleano,
+    "columnas_ocultas": _columnas,
+}
+
+
+def validar(datos: dict) -> dict:
+    """Devuelve una copia con solo claves conocidas y valores válidos (el resto, por defecto)."""
+    resultado = {}
+    for clave, por_defecto in POR_DEFECTO.items():
+        valor = VALIDADORES[clave](datos.get(clave)) if clave in datos else None
+        resultado[clave] = valor if valor is not None else (list(por_defecto) if isinstance(por_defecto, list)
+                                                             else por_defecto)
+    return resultado
+
+
 def cargar() -> dict:
-    datos = dict(POR_DEFECTO)
     ruta = rutas.ruta_configuracion()
+    leidos = {}
     if ruta.exists():
         try:
-            leidos = json.loads(ruta.read_text(encoding="utf-8"))
-            if isinstance(leidos, dict):
-                datos.update({k: v for k, v in leidos.items() if k in POR_DEFECTO})
+            contenido = json.loads(ruta.read_text(encoding="utf-8"))
+            if isinstance(contenido, dict):
+                leidos = contenido
         except (OSError, ValueError):
             pass  # un config.json dañado no debe impedir arrancar: se usan los valores por defecto
-    return datos
+    return validar(leidos)
 
 
 def guardar(datos: dict) -> None:
-    limpio = {k: datos.get(k, v) for k, v in POR_DEFECTO.items()}
-    rutas.ruta_configuracion().write_text(json.dumps(limpio, ensure_ascii=False, indent=2), encoding="utf-8")
+    """Escritura atómica: se escribe a un archivo provisional y se sustituye de golpe."""
+    ruta = rutas.ruta_configuracion()
+    provisional = ruta.with_suffix(".json.tmp")
+    provisional.write_text(json.dumps(validar(datos), ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(provisional, ruta)
 
 
 def obtener(clave: str):

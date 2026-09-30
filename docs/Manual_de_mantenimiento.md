@@ -6,12 +6,13 @@ Guía paso a paso para quien tenga que modificar el programa, pensada para un ni
 
 ## 1. Preparar el ordenador (una sola vez)
 
-1. Instala **Python 3.12** desde <https://www.python.org/downloads/windows/>. Marca la casilla *«Add python.exe to PATH»*.
+1. Instala **Python 3.13** (la última 3.13.x) desde <https://www.python.org/downloads/windows/>. No hace falta añadirlo al PATH: se usa con `py -3.13`.
+   *Por qué 3.13 y no 3.12:* la rama 3.12 ya solo recibe parches de seguridad en código fuente, sin instaladores para Windows, así que el Python que va dentro del ejecutable se quedaría sin actualizar.
 2. Instala **Git** desde <https://git-scm.com/download/win> (opcional, pero muy recomendable para no perder cambios).
 3. Abre **PowerShell** en la carpeta del proyecto (en el Explorador: *Archivo › Abrir Windows PowerShell*) y ejecuta:
 
 ```powershell
-py -3.12 -m venv .venv
+py -3.13 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements-dev.txt
 ```
 
@@ -160,6 +161,24 @@ curl.exe -o libridomus\recursos\iconos\NOMBRE.svg https://unpkg.com/lucide-stati
 
   Después úsalo con `tema.icono("NOMBRE")` o `comun.boton("Texto", "NOMBRE")`. La prueba `test_todos_los_iconos_citados_existen` falla si el código cita un icono que no está en la carpeta.
 - **Logotipo:** sustituye `res\LibriDomus---Icono.png` (mejor cuadrado y de 512 px o más) y ejecuta `build\generar_icono.py`.
+
+
+### 4.6 Reglas de robustez (versión 1.2)
+
+Surgen de las pruebas de `docs/Informe_robustez.md`. Respétalas al tocar el código:
+
+- **Listas de ids en SQL:** SQLite admite como máximo 32.766 parámetros por consulta. Nunca construyas `IN (?, ?, …)` con una lista que pueda crecer: usa `elementos.tandas(lista)` (lotes de 500) o una subconsulta recursiva, como `_SUBARBOL` en `servicios/busqueda.py`.
+- **Errores de SQLite:** `conexion.abrir()` convierte cualquier error en `ErrorBaseDatos` (`BaseDatosDanada`, `BaseDatosSoloLectura`) con un mensaje en castellano. Lo que falle después, dentro de una acción, lo recoge el **gestor global** (`interfaz/aplicacion.py → instalar_gestor_errores`): lo anota en `datos\registro.log` y muestra un mensaje comprensible (`servicios/registro.py → mensaje_para_usuario`). Para diagnosticar un problema, pide al usuario ese archivo.
+- **Texto del usuario en la interfaz:** siempre como **texto plano** (`setTextFormat(Qt.PlainText)`; los cuadros de `comun.error/aviso/confirmar` ya lo hacen). Solo se usa HTML en textos que construye el programa, escapando los datos con `html.escape`.
+- **Preferencias:** cada ajuste nuevo de `config.json` necesita su entrada en `POR_DEFECTO` **y** en `VALIDADORES` (`servicios/configuracion.py`). Un valor inválido nunca debe impedir arrancar.
+- **Copias:** al restaurar se exige exactamente el esquema de la versión de la copia. Ese esquema de referencia se construye ejecutando `esquema.MIGRACIONES`, así que una migración nueva queda cubierta sin tocar `copias.py`. Se rechazan disparadores, vistas y tablas desconocidas. Del ZIP solo se extraen `biblioteca.db`, `config.json` y `portadas/*.jpg`, con límites de tamaño y de espacio libre.
+- **Red:** `isbn.descargar()` solo admite HTTPS (también en las redirecciones) y como máximo 5 MB por respuesta. Lee las respuestas con `_texto()`, `_lista()` y `_dic()`: nunca des por hecho el tipo de un dato recibido.
+- **Instancia única:** `datos\libridomus.lock` (QLockFile). Si el programa se cierra de golpe, el bloqueo se libera solo, porque Qt comprueba si el proceso que lo creó sigue vivo.
+- **Arranque:** se ejecuta `PRAGMA quick_check` (≈0,5 s con 100.000 elementos). Si falla, se ofrece restaurar la última copia automática válida. El archivo dañado se aparta como `biblioteca_danada_AAAAMMDD_HHMMSS.db`, nunca se borra.
+- **Pruebas de robustez:** `tests\robustez\` contiene scripts largos que no forman parte de `pytest`. Ejecútalos tras cambios importantes:
+  - `estres_seguridad.py` (≈3 min),
+  - `concurrencia_cortes.py` (≈2 min),
+  - `rendimiento_100k.py` y después `memoria_y_alta_100k.py` (varios minutos).
 
 ---
 

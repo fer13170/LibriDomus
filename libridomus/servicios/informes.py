@@ -50,17 +50,105 @@ def _tabla(filas: list[Resultado], con_ubicacion: bool, con_prestamo: bool = Fal
     return f"<table width='100%' cellspacing='0' cellpadding='3'><tr>{cabecera}</tr>{cuerpo}</table>"
 
 
-def _documento(titulo: str, subtitulo: str, cuerpo: str) -> str:
+FILAS_POR_PARTE = 2000  # los informes grandes se maquetan por partes para no agotar la memoria
+
+
+def _envolver(cuerpo: str) -> str:
+    return f"<html><head><style>{ESTILO}</style></head><body>{cuerpo}</body></html>"
+
+
+def _cabecera(titulo: str, subtitulo: str) -> str:
     fecha = datetime.now().strftime("%d/%m/%Y %H:%M")
-    return (f"<html><head><style>{ESTILO}</style></head><body>"
-            f"<h1>{html.escape(titulo)}</h1><p class='sub'>{html.escape(subtitulo)} · {NOMBRE} · {fecha}</p>"
-            f"{cuerpo}</body></html>")
+    return f"<h1>{html.escape(titulo)}</h1><p class='sub'>{html.escape(subtitulo)} · {NOMBRE} · {fecha}</p>"
 
 
-def _escribir_pdf(contenido_html: str, destino: Path | str, titulo: str) -> int:
-    documento = QTextDocument()
-    documento.setHtml(contenido_html)
-    return escribir_documento(documento, destino, titulo)
+def _partes(cabecera: str, bloques: list[tuple[str, list[Resultado], bool, bool]], vacio: str) -> list[str]:
+    """Reparte los bloques (título de sección, filas, con ubicación, con préstamo) en partes de
+    como mucho FILAS_POR_PARTE filas. Cada parte se maqueta y se libera por separado: el inventario
+    completo de 90.000 elementos llegaba a 1 GB de memoria maquetado de una vez."""
+    partes: list[str] = []
+    actual, filas_actual = [cabecera], 0
+    for titulo_seccion, filas, con_ubicacion, con_prestamo in bloques:
+        for i in range(0, len(filas), FILAS_POR_PARTE):
+            trozo = filas[i:i + FILAS_POR_PARTE]
+            if filas_actual and filas_actual + len(trozo) > FILAS_POR_PARTE:
+                partes.append("".join(actual))
+                actual, filas_actual = [], 0
+            if titulo_seccion:
+                sufijo = " (continuación)" if i else ""
+                actual.append(f"<h2>{titulo_seccion}{sufijo}</h2>")
+            actual.append(_tabla(trozo, con_ubicacion, con_prestamo))
+            filas_actual += len(trozo)
+    if not bloques:
+        actual.append(vacio)
+    partes.append("".join(actual))
+    return partes
+
+
+def _nuevo_pdf(destino: Path | str, titulo: str) -> QPdfWriter:
+    pdf = QPdfWriter(str(destino))
+    # A 96 ppp un píxel del documento coincide con un punto del PDF (el texto sigue siendo vectorial).
+    pdf.setResolution(96)
+    pdf.setPageLayout(QPageLayout(QPageSize(QPageSize.PageSizeId.A4), QPageLayout.Orientation.Portrait,
+                                  QMarginsF(15, 12, 15, 12), QPageLayout.Unit.Millimeter))
+    pdf.setTitle(titulo)
+    pdf.setCreator(NOMBRE)
+    return pdf
+
+
+ALTO_PIE = 28
+
+
+def _pintar(pdf: QPdfWriter, pintor: QPainter, documento: QTextDocument, primera: int,
+            total: int | None, progreso=None) -> int:
+    """Pinta el documento a partir de la página ``primera`` (0 = la primera del PDF).
+    Devuelve cuántas páginas ha ocupado."""
+    area = pdf.pageLayout().paintRectPixels(96)
+    documento.setPageSize(QSizeF(area.width(), area.height() - ALTO_PIE))
+    alto_pagina = documento.pageSize().height()
+    paginas = documento.pageCount()
+    for n in range(paginas):
+        numero = primera + n + 1
+        if progreso is not None and (n % 5 == 0 or n == paginas - 1):
+            progreso(numero, total)  # la ventana muestra «página n» (o «n de N» si se conoce)
+        if numero > 1:
+            pdf.newPage()
+        pintor.save()
+        pintor.translate(0, -n * alto_pagina)
+        documento.drawContents(pintor, QRectF(0, n * alto_pagina, area.width(), alto_pagina))
+        pintor.restore()
+        pintor.setFont(QFont("Segoe UI", 8))
+        pintor.setPen(QColor("#666666"))
+        pintor.drawText(QRectF(0, area.height() - ALTO_PIE + 8, area.width(), ALTO_PIE - 8),
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                        f"Página {numero} de {total}" if total else f"Página {numero}")
+    return paginas
+
+
+def escribir_partes(partes: list[str], destino: Path | str, titulo: str, progreso=None) -> int:
+    """Maqueta cada parte HTML por separado (poca memoria) y las pinta seguidas. Devuelve las páginas.
+
+    Con una sola parte el pie dice «Página n de N»; con varias, «Página n» (el total no se
+    conoce sin maquetarlo todo antes, que es justo lo que se quiere evitar)."""
+    pdf = _nuevo_pdf(destino, titulo)
+    pintor = QPainter(pdf)
+    paginas = 0
+    try:
+        for parte in partes:
+            documento = QTextDocument()
+            documento.setHtml(_envolver(parte))
+            paginas += _pintar(pdf, pintor, documento, paginas, None if len(partes) > 1 else
+                               _contar(documento, pdf), progreso)
+            del documento  # se libera antes de maquetar la siguiente parte
+    finally:
+        pintor.end()
+    return paginas
+
+
+def _contar(documento: QTextDocument, pdf: QPdfWriter) -> int:
+    area = pdf.pageLayout().paintRectPixels(96)
+    documento.setPageSize(QSizeF(area.width(), area.height() - ALTO_PIE))
+    return documento.pageCount()
 
 
 def markdown_a_pdf(markdown: str, destino: Path | str, titulo: str) -> int:
@@ -87,55 +175,30 @@ def markdown_a_pdf(markdown: str, destino: Path | str, titulo: str) -> int:
     return escribir_documento(documento, destino, titulo)
 
 
-def escribir_documento(documento: QTextDocument, destino: Path | str, titulo: str) -> int:
-    """Pagina el documento en A4 y añade 'Página n de N' al pie. Devuelve el número de páginas."""
-    pdf = QPdfWriter(str(destino))
-    # A 96 ppp un píxel del documento coincide con un punto del PDF (el texto sigue siendo vectorial).
-    pdf.setResolution(96)
-    pdf.setPageLayout(QPageLayout(QPageSize(QPageSize.PageSizeId.A4), QPageLayout.Orientation.Portrait,
-                                  QMarginsF(15, 12, 15, 12), QPageLayout.Unit.Millimeter))
-    pdf.setTitle(titulo)
-    pdf.setCreator(NOMBRE)
-    area = pdf.pageLayout().paintRectPixels(96)
-    alto_pie = 28
-    documento.setPageSize(QSizeF(area.width(), area.height() - alto_pie))
-    alto_pagina = documento.pageSize().height()
-    paginas = documento.pageCount()
+def escribir_documento(documento: QTextDocument, destino: Path | str, titulo: str, progreso=None) -> int:
+    """Pagina un documento ya construido (p. ej. el manual) con «Página n de N» al pie."""
+    pdf = _nuevo_pdf(destino, titulo)
     pintor = QPainter(pdf)
     try:
-        for n in range(paginas):
-            if n:
-                pdf.newPage()
-            pintor.save()
-            pintor.translate(0, -n * alto_pagina)
-            documento.drawContents(pintor, QRectF(0, n * alto_pagina, area.width(), alto_pagina))
-            pintor.restore()
-            pintor.setFont(QFont("Segoe UI", 8))
-            pintor.setPen(QColor("#666666"))
-            pintor.drawText(QRectF(0, area.height() - alto_pie + 8, area.width(), alto_pie - 8),
-                            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                            f"Página {n + 1} de {paginas}")
+        return _pintar(pdf, pintor, documento, 0, _contar(documento, pdf), progreso)
     finally:
         pintor.end()
-    return paginas
 
 
-def inventario(con: sqlite3.Connection, ubicacion_id: int | None, destino: Path | str) -> int:
+def inventario(con: sqlite3.Connection, ubicacion_id: int | None, destino: Path | str, progreso=None) -> int:
     """Todo lo que hay en una ubicación (o en toda la casa), agrupado por ubicación. Devuelve el nº de elementos."""
-    filtros = Filtros(ubicacion_id=ubicacion_id)
-    resultados = buscar(con, filtros)
+    resultados = buscar(con, Filtros(ubicacion_id=ubicacion_id))
     grupos: dict[str, list[Resultado]] = defaultdict(list)
     for r in resultados:
         grupos[r.ubicacion or "(sin ubicación)"].append(r)
     orden_rutas = {u.id: i for i, u in enumerate(_recorrido_arbol(con))}
     ruta_a_id = {r.ubicacion: r.ubicacion_id for r in resultados}
     claves = sorted(grupos, key=lambda ruta: orden_rutas.get(ruta_a_id.get(ruta), 10**9))
-    cuerpo = "".join(f"<h2>{html.escape(ruta)} ({len(grupos[ruta])})</h2>{_tabla(grupos[ruta], False)}"
-                     for ruta in claves)
+    bloques = [(f"{html.escape(ruta)} ({len(grupos[ruta])})", grupos[ruta], False, False) for ruta in claves]
     nombre = ubicaciones.ruta_texto(con, ubicacion_id, incluir_raiz=True) if ubicacion_id else "Toda la casa"
     titulo = f"Inventario: {nombre}"
-    _escribir_pdf(_documento(titulo, f"{len(resultados)} elementos", cuerpo or "<p>No hay elementos.</p>"),
-                  destino, titulo)
+    escribir_partes(_partes(_cabecera(titulo, f"{len(resultados)} elementos"), bloques, "<p>No hay elementos.</p>"),
+                    destino, titulo, progreso)
     return len(resultados)
 
 
@@ -148,19 +211,19 @@ def _recorrido_arbol(con: sqlite3.Connection):
     return list(visitar(None))
 
 
-def prestados(con: sqlite3.Connection, destino: Path | str) -> int:
-    resultados = buscar(con, Filtros(solo_prestados=True))
-    resultados.sort(key=lambda r: (r.prestado_a.casefold(), r.titulo.casefold()))
+def prestados(con: sqlite3.Connection, destino: Path | str, progreso=None) -> int:
+    lista = buscar(con, Filtros(solo_prestados=True))
+    lista.sort(key=lambda r: (r.prestado_a.casefold(), r.titulo.casefold()))
     titulo = "Elementos prestados"
-    _escribir_pdf(_documento(titulo, f"{len(resultados)} elementos",
-                             _tabla(resultados, True, True) if resultados else "<p>No hay nada prestado.</p>"),
-                  destino, titulo)
-    return len(resultados)
+    bloques = [("", lista, True, True)] if lista else []
+    escribir_partes(_partes(_cabecera(titulo, f"{len(lista)} elementos"), bloques, "<p>No hay nada prestado.</p>"),
+                    destino, titulo, progreso)
+    return len(lista)
 
 
-def resultados(lista: list[Resultado], descripcion: str, destino: Path | str) -> int:
+def resultados(lista: list[Resultado], descripcion: str, destino: Path | str, progreso=None) -> int:
     titulo = "Resultado de la búsqueda"
-    _escribir_pdf(_documento(titulo, f"{descripcion} · {len(lista)} elementos",
-                             _tabla(lista, True, True) if lista else "<p>Sin resultados.</p>"),
-                  destino, titulo)
+    bloques = [("", lista, True, True)] if lista else []
+    escribir_partes(_partes(_cabecera(titulo, f"{descripcion} · {len(lista)} elementos"), bloques,
+                            "<p>Sin resultados.</p>"), destino, titulo, progreso)
     return len(lista)

@@ -60,7 +60,30 @@ def fecha_valida(valor: str) -> bool:
     return not valor or bool(_FECHA.match(valor))
 
 
+TANDA = 500  # SQLite admite como máximo 32.766 parámetros por consulta: las listas largas van por tandas
+
+
+def tandas(lista: list, tamano: int = TANDA):
+    for i in range(0, len(lista), tamano):
+        yield lista[i:i + tamano]
+
+
+def limpiar_texto(valor) -> str:
+    """Texto seguro para SQLite: sustituye los caracteres no representables en UTF-8
+    (sustitutos UTF-16 sueltos) en lugar de fallar al guardar."""
+    return str(valor).encode("utf-8", "replace").decode("utf-8")
+
+
+_CAMPOS_TEXTO = ["titulo", "subtitulo", "fecha_desde", "fecha_hasta", "idioma", "estado", "identificador",
+                 "lugar_evento", "portada", "prestado_a", "fecha_prestamo", "notas"]
+
+
 def _validar(e: Elemento) -> None:
+    for campo in _CAMPOS_TEXTO:
+        setattr(e, campo, limpiar_texto(getattr(e, campo) or ""))
+    e.personas = [(limpiar_texto(n), limpiar_texto(r)) for n, r in e.personas]
+    e.etiquetas = [limpiar_texto(x) for x in e.etiquetas]
+    e.valores = {campo_id: limpiar_texto(v) for campo_id, v in e.valores.items()}
     e.titulo = e.titulo.strip()
     if not e.titulo:
         raise ErrorElemento("El título es obligatorio.")
@@ -103,6 +126,11 @@ def guardar(con: sqlite3.Connection, e: Elemento) -> int:
             if cursor.rowcount == 0:
                 raise ErrorElemento("El elemento ya no existe.")
 
+        # Personas y etiquetas que tenía antes: si dejan de usarse, se borran al final.
+        personas_antes = [f[0] for f in con.execute(
+            "SELECT persona_id FROM elemento_persona WHERE elemento_id = ?", (e.id,))]
+        etiquetas_antes = [f[0] for f in con.execute(
+            "SELECT etiqueta_id FROM elemento_etiqueta WHERE elemento_id = ?", (e.id,))]
         con.execute("DELETE FROM elemento_persona WHERE elemento_id = ?", (e.id,))
         for orden, (nombre, rol) in enumerate(e.personas):
             persona_id = _obtener_o_crear(con, "persona", nombre)
@@ -121,7 +149,7 @@ def guardar(con: sqlite3.Connection, e: Elemento) -> int:
             if str(valor).strip():
                 con.execute("INSERT INTO valor_campo (elemento_id, campo_id, valor) VALUES (?, ?, ?)",
                             (e.id, campo_id, str(valor).strip()))
-        _limpiar_huerfanos(con)
+        _limpiar_huerfanos(con, personas_antes, etiquetas_antes)
         busqueda.reindexar(con, e.id)
     return e.id
 
@@ -133,9 +161,22 @@ def _obtener_o_crear(con: sqlite3.Connection, tabla: str, nombre: str) -> int:
     return con.execute(f"INSERT INTO {tabla} (nombre) VALUES (?)", (nombre,)).lastrowid
 
 
-def _limpiar_huerfanos(con: sqlite3.Connection) -> None:
-    con.execute("DELETE FROM persona WHERE id NOT IN (SELECT persona_id FROM elemento_persona)")
-    con.execute("DELETE FROM etiqueta WHERE id NOT IN (SELECT etiqueta_id FROM elemento_etiqueta)")
+def _limpiar_huerfanos(con: sqlite3.Connection, personas: list[int] | None = None,
+                       etiquetas: list[int] | None = None) -> None:
+    """Borra personas y etiquetas que ya no usa ningún elemento.
+
+    Con listas, solo se miran esas (rápido aunque la colección sea enorme); sin ellas, todas.
+    """
+    if personas is None and etiquetas is None:
+        con.execute("DELETE FROM persona WHERE id NOT IN (SELECT persona_id FROM elemento_persona)")
+        con.execute("DELETE FROM etiqueta WHERE id NOT IN (SELECT etiqueta_id FROM elemento_etiqueta)")
+        return
+    for id_ in set(personas or []):
+        con.execute("DELETE FROM persona WHERE id = ? AND NOT EXISTS "
+                    "(SELECT 1 FROM elemento_persona WHERE persona_id = ?)", (id_, id_))
+    for id_ in set(etiquetas or []):
+        con.execute("DELETE FROM etiqueta WHERE id = ? AND NOT EXISTS "
+                    "(SELECT 1 FROM elemento_etiqueta WHERE etiqueta_id = ?)", (id_, id_))
 
 
 def obtener(con: sqlite3.Connection, elemento_id: int) -> Elemento | None:
@@ -163,11 +204,17 @@ def borrar(con: sqlite3.Connection, ids: list[int]) -> int:
     """
     if not ids:
         return 0
-    marcas = ",".join("?" * len(ids))
+    borrados = 0
     with transaccion(con):
-        borrados = con.execute(f"DELETE FROM elemento WHERE id IN ({marcas})", ids).rowcount
-        con.execute(f"DELETE FROM elemento_fts WHERE rowid IN ({marcas})", ids)
-        _limpiar_huerfanos(con)
+        for tanda in tandas(list(ids)):
+            marcas = ",".join("?" * len(tanda))
+            personas = [f[0] for f in con.execute(
+                f"SELECT DISTINCT persona_id FROM elemento_persona WHERE elemento_id IN ({marcas})", tanda)]
+            etiquetas = [f[0] for f in con.execute(
+                f"SELECT DISTINCT etiqueta_id FROM elemento_etiqueta WHERE elemento_id IN ({marcas})", tanda)]
+            borrados += con.execute(f"DELETE FROM elemento WHERE id IN ({marcas})", tanda).rowcount
+            con.execute(f"DELETE FROM elemento_fts WHERE rowid IN ({marcas})", tanda)
+            _limpiar_huerfanos(con, personas, etiquetas)
     return borrados
 
 

@@ -41,3 +41,18 @@ print(f"Guardar UN elemento con 100.000 en la colección: mediana {statistics.me
 inicio = time.perf_counter()
 v.refrescar_todo()
 print(f"Refrescar la ventana después de guardar (lo que ve el usuario): {time.perf_counter() - inicio:.2f} s")
+
+# --- Después de las correcciones: lo que hace ahora la ventana tras guardar, y Ctrl+A
+e = elementos.guardar(con, Elemento(tipo_id=libro, titulo="Una más", ubicacion_id=balda))
+inicio = time.perf_counter()
+v.refrescar_elementos([e], e)
+print(f"Refresco parcial tras guardar (versión corregida): {time.perf_counter() - inicio:.2f} s")
+inicio = time.perf_counter()
+v.tabla.selectAll()
+app.processEvents()
+n = len(v.ids_seleccionados())
+print(f"Seleccionar todo (Ctrl+A) con {n:,} filas: {time.perf_counter() - inicio:.2f} s")
+casa = ubicaciones.obtener(con, ubicaciones.buscar_por_codigo(con, "CASA").id)
+inicio = time.perf_counter()
+ubicaciones.actualizar(con, casa.id, "Casa renombrada", casa.tipo_id, casa.codigo)
+print(f"Renombrar la casa: {time.perf_counter() - inicio:.2f} s")

@@ -232,3 +232,40 @@ Una copia manipulada puede llevar un `TRIGGER` que se ejecuta con las operacione
 9. **Resto (BAJA)** — D3, D5, D6, D7, D10, D13, C5, C6, B5, B6, A8.
 
 **Sin probar** (fuera del alcance de este equipo): disco lleno, otro equipo físico sin Python, Windows Defender y otros antivirus distintos de Avast, pantallas de alta densidad (4K con escalado de Windows).
+
+---
+## Correcciones aplicadas en la versión 1.2.0
+
+Cada corrección tiene su prueba de regresión en `tests/test_correcciones_robustez.py` (46 pruebas; 178 en total). Todos los scripts de `tests/robustez/` se han vuelto a ejecutar con el código corregido.
+
+| Hallazgo | Estado | Cómo se ha resuelto | Resultado medido |
+|---|---|---|---|
+| **C9** Base de datos dañada al arrancar (ALTA) | ✅ | `conexion.abrir` traduce cualquier error de SQLite y comprueba la integridad (`quick_check`) al arrancar. Si está dañada, se ofrece restaurar la última copia automática **válida** o empezar de cero. El archivo dañado se aparta como `biblioteca_danada_…db`, nunca se borra | Archivo aleatorio y truncado: mensaje en castellano y recuperación guiada |
+| **A6** Sin gestor de errores ni registro | ✅ | Gestor global (`sys.excepthook` y `threading.excepthook`) → `datos\registro.log` (rotativo, 512 KB × 4) y un mensaje comprensible. Mensajes específicos para «bloqueada», «solo lectura», «disco lleno» y «dañada» | Un error provocado dentro de una acción se explica y queda en el registro con su traza |
+| **C2 / A7** Dos instancias a la vez | ✅ | Instancia única por carpeta de datos (`libridomus.lock`), espera de 15 s ante bloqueos y transacciones `BEGIN IMMEDIATE` | 6 procesos durante 25 s: de 5 errores a **0** |
+| **C10** Base de datos de solo lectura | ✅ | Al arrancar se comprueba con una escritura real que se deshace y se avisa | Mensaje claro al abrir |
+| **C8** Más de 32.766 elementos seleccionados | ✅ | Operaciones por tandas de 500 y subconsultas recursivas para los subárboles | Borrar 40.000 elementos y una ubicación con 40.000 cajas: correcto |
+| **C11** `config.json` manipulado | ✅ | Validación de tipo y rango de cada ajuste; lo inválido vuelve al valor por defecto. Guardado atómico | «grande», 50, 7, null…: arranca con valores seguros |
+| **D11** Copia con esquema falso | ✅ | Se exige el esquema exacto de su versión (construido desde las migraciones) y se prueba a abrirla sobre un duplicado antes de sustituir nada | Rechazada con explicación |
+| **D12** Copia con disparador o vista oculta | ✅ | Se rechazan disparadores, vistas y tablas desconocidas | Rechazada antes de tocar los datos |
+| **D10** ZIP «bomba» | ✅ | Solo se extraen `biblioteca.db`, `config.json` y `portadas/*.jpg`; se comprueban la relación de compresión, el tamaño total y el espacio libre **antes** de extraer | Rechazada en 0,0 s sin descomprimir |
+| **D13** Clave de Google en la copia ZIP | ✅ | La copia manual ya no incluye la clave | — |
+| **B2** Ctrl+A con 90.000 filas | ✅ (mejorado) | Lista de seleccionados leída por rangos; `flags()` precalculado; sin intermediario de ordenación | 11 s → **2,8 s** (el resto ocurre dentro de Qt) |
+| **B3** Refresco tras guardar | ✅ | Solo se actualizan las filas afectadas y los contadores; recargar el árbol ya no recarga la lista entera | 2,94 s → **0,32 s** |
+| **B4** Renombrar la casa / mover plantas | ✅ | Solo se reindexa si cambia la ruta: nada al reordenar, cambiar el código o la descripción, ni al renombrar la raíz. Cursor de espera en las operaciones largas | 20 s → **0,01 s** |
+| **B5** Inventario PDF enorme | ✅ | Maquetado por partes de 2.000 filas; progreso página a página en la barra de estado; cursor de espera | Pico de memoria **1.031 MB → 144 MB**; 112 s → 94 s |
+| **B6** `reindexar_todo` sin transacción | ✅ | Dentro de una transacción y con rutas precalculadas | 994 s → **16 s** |
+| **A8** Altas cada vez más lentas | ✅ | Solo se limpian las personas y etiquetas que el elemento deja de usar | Un alta: 21 → **7 ms**; 100.000 seguidas: 917 → **22 s** |
+| **A5** Python 3.12.10 sin parches | ✅ | Compilado con **Python 3.13.15** (instalador oficial, huella SHA-256 y firma de la PSF verificadas), que incluye **OpenSSL 3.0.21** y **SQLite 3.50.4** | Autoprueba del `.exe`: «Python incluido: 3.13.15» |
+| **D3** HTML en los datos | ✅ | Texto plano en todas las etiquetas y cuadros con datos del usuario | El título `<h1>…` se ve literal |
+| **D5** Redirección a HTTP | ✅ | Solo HTTPS, también en redirecciones | Rechazada con mensaje |
+| **D6** Descargas sin límite | ✅ | Máximo 5 MB por respuesta | — |
+| **D7** Respuestas malformadas | ✅ | Lectura defensiva de cada campo; solo se aceptan claves de autor y obra con el formato de Open Library | 11 respuestas malformadas: ninguna provoca un error del programa |
+| **C5** Sustitutos UTF-16 sueltos | ✅ | Se sanean al guardar (se sustituyen por «?») | — |
+| **C6** Códigos de ubicación enormes | ✅ | Máximo unos 20 caracteres (se conserva la planta y la abreviatura); búsqueda de código libre con una sola consulta | 200 niveles: 892 → **12 caracteres**; 5.000 duplicados: 52 → 17 s |
+
+**Encontrado durante las correcciones:**
+- «unable to open database file» (carpeta inexistente o sin permisos) se habría tratado como «base de datos dañada» y habría lanzado la recuperación sin motivo. Ahora tiene su propio mensaje.
+- Recargar el árbol de ubicaciones emitía «ubicación cambiada» aunque la selección no cambiara, así que cada guardado recargaba la lista **dos veces**. Corregido.
+
+**Sigue sin probarse** en este equipo: disco lleno real, otro PC sin Python, antivirus distintos de Avast y pantallas 4K con escalado.

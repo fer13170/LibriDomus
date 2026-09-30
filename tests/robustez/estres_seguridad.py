@@ -254,13 +254,11 @@ def _():
 
 @prueba("Redirección de HTTPS a HTTP (degradación)")
 def _():
-    import urllib.request
     try:
-        with urllib.request.urlopen("https://httpbin.org/redirect-to?url=http%3A%2F%2Fexample.com%2F", timeout=15) as r:
-            final = r.geturl()
-    except Exception as e:  # noqa: BLE001
-        return f"no se pudo comprobar ({type(e).__name__})"
-    assert not final.startswith("http://"), f"urllib sigue la redirección a {final} (texto sin cifrar)"
+        isbn._SoloHttps().redirect_request(None, None, 302, "Found", {}, "http://example.com/")
+        raise AssertionError("se acepta la redirección a http://")
+    except isbn.ErrorConsulta as e:
+        return f"rechazada: {e}"
 
 
 @prueba("Portada «bomba»: PNG de 30.000 × 30.000 píxeles (pesa poco comprimido)")
@@ -348,7 +346,10 @@ def _():
     t.execute("CREATE TRIGGER sabotaje AFTER INSERT ON elemento BEGIN DELETE FROM elemento WHERE id <> NEW.id; END")
     t.commit()
     t.close()
-    copias.restaurar(con, copia)
+    try:
+        copias.restaurar(con, copia)
+    except copias.ErrorCopia as e:
+        return f"la copia se rechaza antes de tocar nada: {e}"
     con = conexion.abrir()
     antes = con.execute("SELECT COUNT(*) FROM elemento").fetchone()[0]
     elementos.guardar(con, Elemento(tipo_id=LIBRO, titulo="nuevo"))
@@ -370,11 +371,12 @@ def _():
     inicio = time.perf_counter()
     try:
         copias.restaurar(con, ruta)
-        resultado = "¡aceptada!"
+        raise AssertionError("¡la bomba se ha aceptado!")
     except copias.ErrorCopia as e:
         resultado = f"rechazada ({e})"
-    return (f"ZIP de {tam / 2**20:.1f} MB: {resultado}, pero antes se descomprimió entero (1 GB en disco temporal) "
-            f"en {time.perf_counter() - inicio:.1f} s; no hay límite de tamaño")
+    segundos = time.perf_counter() - inicio
+    assert segundos < 2, f"tardó {segundos:.1f} s: parece que se descomprimió"
+    return f"ZIP de {tam / 2**20:.1f} MB: {resultado} en {segundos:.2f} s, sin descomprimirla"
 
 
 # ======================================================================= arranque con datos dañados
@@ -421,15 +423,12 @@ def _():
     shutil.copy2(rutas.ruta_base_datos(), carpeta / "biblioteca.db")
     os.chmod(carpeta / "biblioteca.db", 0o444)
     try:
-        c = conexion.abrir(carpeta / "biblioteca.db")
-        try:
-            elementos.guardar(c, Elemento(tipo_id=LIBRO, titulo="x"))
-            return "se puede escribir (¿?)"
-        except sqlite3.OperationalError as e:
-            raise AssertionError(f"abre sin avisar y falla al guardar con sqlite3.OperationalError («{e}»), que la "
-                                 "ficha no captura: el usuario pulsa Guardar y no pasa nada") from e
-        finally:
-            c.close()
+        # Así abre la aplicación al arrancar (interfaz/aplicacion.py -> abrir_datos).
+        c = conexion.abrir(carpeta / "biblioteca.db", comprobar_integridad=True, exigir_escritura=True)
+        c.close()
+        raise AssertionError("abre sin avisar de que no se podrá guardar")
+    except conexion.BaseDatosSoloLectura as e:
+        return f"se avisa al arrancar: {e}"
     finally:
         os.chmod(carpeta / "biblioteca.db", 0o666)
 

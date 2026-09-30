@@ -22,6 +22,7 @@ Todos tus datos se guardan en la subcarpeta **`datos`**, junto al programa:
 | `datos\portadas\` | Las imágenes de portada |
 | `datos\copias\` | Copias de seguridad automáticas |
 | `datos\config.json` | Tus preferencias |
+| `datos\registro.log` | Registro de errores (para diagnosticar problemas) |
 
 > Para llevarte el programa a otro ordenador, copia la carpeta `LibriDomus` completa.
 
@@ -196,6 +197,8 @@ Menú **Catálogo › Tipos de elemento y campos…**
 - **Manual**: *Archivo › Hacer copia de seguridad…* crea un **ZIP con todo** (datos, portadas y preferencias). **Guárdalo de vez en cuando fuera del ordenador**, por ejemplo en un USB o en la nube.
 - **Restaurar**: *Archivo › Restaurar copia de seguridad…* Elige una copia automática o un ZIP. Antes de sustituir nada, el programa guarda una copia del estado actual (*«previa a un cambio»*). Después se reinicia solo.
 
+> La copia manual **no incluye la clave de Google Books** (si la tienes configurada), por si la copia acaba en otras manos.
+
 > Las copias automáticas solo incluyen la base de datos. Las portadas están en `datos\portadas` y el programa **no borra ninguna portada que necesite alguna copia guardada**. Para una copia completa y portátil, usa la copia manual en ZIP.
 
 ---
@@ -221,3 +224,8 @@ Menú **Catálogo › Tipos de elemento y campos…**
 | El ISBN no se encuentra | Rellena los datos a mano. Open Library no tiene todos los libros. |
 | *«Esta versión de SQLite no incluye la búsqueda FTS5»* | No debería ocurrir con el ejecutable oficial. Vuelve a descomprimir el ZIP. |
 | He borrado algo por error | *Archivo › Restaurar copia de seguridad…* y elige la copia automática anterior. |
+| *«LibriDomus ya está abierto con estos mismos datos»* | Ya hay una ventana abierta: búscala en la barra de tareas. Solo se permite una a la vez para que no se pisen al guardar. Si el programa se cerró de golpe, el bloqueo se libera solo al volver a abrirlo. |
+| *«Los datos de LibriDomus están dañados»* al abrir | Ocurre si el archivo se estropea, por ejemplo al copiarlo a un USB y quitarlo antes de tiempo. El programa ofrece **restaurar la última copia automática válida**. El archivo dañado nunca se borra: se guarda aparte como `biblioteca_danada_…db` en la carpeta de datos. |
+| *«El archivo de datos es de solo lectura»* | La carpeta está en un USB protegido contra escritura, en un CD o sin permisos. Cópiala a Documentos o al Escritorio. |
+| Aparece *«Ha ocurrido un error inesperado»* | Tus datos están a salvo y puedes seguir. El detalle técnico queda en `datos\registro.log`: guárdalo si necesitas pedir ayuda. |
+| Una copia de otra persona *«no tiene la estructura de LibriDomus o ha sido modificada»* | Por seguridad, el programa solo restaura copias con la estructura exacta de LibriDomus, sin añadidos que pudieran alterar tus datos. |

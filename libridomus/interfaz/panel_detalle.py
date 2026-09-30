@@ -26,8 +26,12 @@ def _limpiar(capa) -> None:
             _limpiar(item.layout())
 
 
-def _etiqueta(texto: str, nombre: str = "", ajustar: bool = True, seleccionable: bool = True) -> QLabel:
+def _etiqueta(texto: str, nombre: str = "", ajustar: bool = True, seleccionable: bool = True,
+              html_propio: bool = False) -> QLabel:
+    """Etiqueta de texto PLANO: lo que escribe el usuario nunca se interpreta como HTML.
+    ``html_propio`` solo para textos que construye el programa con los datos ya escapados."""
     e = QLabel(texto)
+    e.setTextFormat(Qt.TextFormat.RichText if html_propio else Qt.TextFormat.PlainText)
     if nombre:
         e.setObjectName(nombre)
     e.setWordWrap(ajustar)
@@ -140,12 +144,13 @@ class PanelDetalle(QWidget):
         if e.personas:
             texto = "<br>".join(f"{html.escape(n)} <span style='color:{tema.color('texto_suave')}'>"
                                 f"· {html.escape(r)}</span>" for n, r in e.personas)
-            self.capa.addWidget(_etiqueta(texto))
+            self.capa.addWidget(_etiqueta(texto, html_propio=True))
 
         # Préstamo destacado
         if e.prestado_a:
             aviso = _etiqueta(f"Prestado a <b>{html.escape(e.prestado_a)}</b>"
-                              + (f" desde el {html.escape(e.fecha_prestamo)}" if e.fecha_prestamo else ""), "aviso")
+                              + (f" desde el {html.escape(e.fecha_prestamo)}" if e.fecha_prestamo else ""), "aviso",
+                              html_propio=True)
             self.capa.addWidget(aviso)
 
         # Ubicación (enlace que lleva al árbol)
@@ -154,7 +159,7 @@ class PanelDetalle(QWidget):
             # Enlace (que se ajusta a varias líneas) para saltar a la ubicación en el árbol.
             ruta = html.escape(ubicaciones.ruta_texto(self.con, e.ubicacion_id))
             enlace = _etiqueta(f"<a href='#' style='color:{tema.color('primario')}; text-decoration:none'>"
-                               f"{ruta}</a>", seleccionable=False)
+                               f"{ruta}</a>", seleccionable=False, html_propio=True)
             enlace.setToolTip("Mostrar esta ubicación en el árbol")
             enlace.linkActivated.connect(lambda _h: self.ir_a_ubicacion.emit(e.ubicacion_id))
             fila_ruta = QHBoxLayout()

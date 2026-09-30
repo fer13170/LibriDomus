@@ -33,12 +33,13 @@ class DatosEtiqueta:
 
 def datos_etiqueta(con: sqlite3.Connection, ubicacion_id: int, max_titulos: int) -> DatosEtiqueta:
     u = ubicaciones.obtener(con, ubicacion_id)
-    ids = ubicaciones.descendientes(con, ubicacion_id)
-    marcas = ",".join("?" * len(ids))
-    total = con.execute(f"SELECT COUNT(*) FROM elemento WHERE ubicacion_id IN ({marcas})", ids).fetchone()[0]
+    subarbol = ("WITH RECURSIVE sub(id) AS (SELECT ? UNION ALL "
+                "SELECT u.id FROM ubicacion u JOIN sub ON u.padre_id = sub.id)")
+    total = con.execute(f"{subarbol} SELECT COUNT(*) FROM elemento WHERE ubicacion_id IN (SELECT id FROM sub)",
+                        (ubicacion_id,)).fetchone()[0]
     titulos = [f[0] for f in con.execute(
-        f"SELECT titulo FROM elemento WHERE ubicacion_id IN ({marcas}) ORDER BY titulo COLLATE ES LIMIT ?",
-        [*ids, max_titulos])] if max_titulos else []
+        f"{subarbol} SELECT titulo FROM elemento WHERE ubicacion_id IN (SELECT id FROM sub) "
+        "ORDER BY titulo COLLATE ES LIMIT ?", (ubicacion_id, max_titulos))] if max_titulos else []
     return DatosEtiqueta(codigo=u.codigo, nombre=u.nombre, total=total, titulos=titulos,
                          ruta=ubicaciones.ruta_texto(con, ubicacion_id, incluir_raiz=False))
 

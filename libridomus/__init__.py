@@ -1,4 +1,4 @@
 """LibriDomus: dónde guardas cada libro, disco, álbum o carpeta de tu casa."""
 
 NOMBRE = "LibriDomus"
-VERSION = "1.1.0"
+VERSION = "1.2.0"

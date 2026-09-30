@@ -16,7 +16,7 @@ $raiz = Split-Path -Parent $PSScriptRoot
 Set-Location $raiz
 $python = Join-Path $raiz ".venv\Scripts\python.exe"
 if (-not (Test-Path $python)) {
-    throw "No existe .venv. Créalo con:  py -3.12 -m venv .venv ; .venv\Scripts\python -m pip install -r requirements-dev.txt"
+    throw "No existe .venv. Créalo con:  py -3.13 -m venv .venv ; .venv\Scripts\python -m pip install -r requirements-dev.txt"
 }
 
 Write-Host "== 1/4 Pruebas automáticas" -ForegroundColor Cyan

@@ -2,7 +2,7 @@
 
 import sqlite3
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QLineEdit,
                                QPushButton, QVBoxLayout, QWidget)
 
@@ -20,7 +20,7 @@ class SelectorUbicacion(QDialog):
         self.excluir = excluir or set()
         self.filtro = QLineEdit(placeholderText="Filtrar ubicaciones…")
         self.arbol = ArbolUbicaciones(con, contar=True)
-        self.ruta = QLabel(objectName="ruta", wordWrap=True)
+        self.ruta = QLabel(objectName="ruta", wordWrap=True, textFormat=Qt.TextFormat.PlainText)
         botones = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.boton_ok = botones.button(QDialogButtonBox.StandardButton.Ok)
         botones.accepted.connect(self.accept)
@@ -63,7 +63,7 @@ class CampoUbicacion(QWidget):
         super().__init__(parent)
         self.con = con
         self._id: int | None = None
-        self.ruta = QLabel(objectName="ruta", wordWrap=True)
+        self.ruta = QLabel(objectName="ruta", wordWrap=True, textFormat=Qt.TextFormat.PlainText)
         self.boton_elegir = QPushButton("Elegir…")
         self.boton_quitar = QPushButton("Quitar")
         capa = QHBoxLayout(self)

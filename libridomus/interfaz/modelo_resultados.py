@@ -2,7 +2,7 @@
 
 import html
 
-from PySide6.QtCore import QAbstractTableModel, QMimeData, QModelIndex, QSortFilterProxyModel, Qt, QUrl
+from PySide6.QtCore import QAbstractTableModel, QMimeData, QModelIndex, Qt, QUrl
 
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import QStyledItemDelegate
@@ -13,6 +13,8 @@ from ..servicios.busqueda import Resultado
 from . import tema
 
 MIME_ELEMENTOS = "application/x-libridomus-elementos"
+_BANDERAS_CELDA = Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsDragEnabled
+_SIN_BANDERAS = Qt.ItemFlag.NoItemFlags
 
 COLUMNAS = ["Tipo", "Título", "Personas", "Año", "Ubicación", "Estado", "Prestado a"]
 
@@ -62,10 +64,33 @@ class ModeloResultados(QAbstractTableModel):
     def resultado(self, fila: int) -> Resultado:
         return self.filas[fila]
 
+    # --- cambios de filas sueltas (tras guardar un elemento no hace falta recargarlo todo)
+    def fila_de(self, elemento_id: int) -> int | None:
+        return next((i for i, r in enumerate(self.filas) if r.id == elemento_id), None)
+
+    def poner(self, resultado: Resultado) -> None:
+        """Sustituye la fila del elemento o, si no estaba, la añade al final."""
+        fila = self.fila_de(resultado.id)
+        if fila is None:
+            self.beginInsertRows(QModelIndex(), len(self.filas), len(self.filas))
+            self.filas.append(resultado)
+            self.endInsertRows()
+        else:
+            self.filas[fila] = resultado
+            self.dataChanged.emit(self.index(fila, 0), self.index(fila, len(COLUMNAS) - 1))
+
+    def quitar(self, elemento_id: int) -> None:
+        fila = self.fila_de(elemento_id)
+        if fila is not None:
+            self.beginRemoveRows(QModelIndex(), fila, fila)
+            del self.filas[fila]
+            self.endRemoveRows()
+
     # --- arrastrar elementos hacia el árbol de ubicaciones para moverlos
     def flags(self, indice):
-        base = super().flags(indice)
-        return base | Qt.ItemFlag.ItemIsDragEnabled if indice.isValid() else base
+        # Qt llama a esto por cada celda al seleccionar (Ctrl+A con 90.000 filas = 540.000 veces):
+        # se devuelve un valor precalculado en lugar de combinar enumeraciones en cada llamada.
+        return _BANDERAS_CELDA if indice.isValid() else _SIN_BANDERAS
 
     def mimeTypes(self):  # noqa: N802 - nombre impuesto por Qt
         return [MIME_ELEMENTOS]
@@ -118,11 +143,3 @@ class DelegadoRuta(QStyledItemDelegate):
     def initStyleOption(self, opcion, indice):  # noqa: N802 - nombre impuesto por Qt
         super().initStyleOption(opcion, indice)
         opcion.textElideMode = Qt.TextElideMode.ElideLeft
-
-
-class OrdenadorResultados(QSortFilterProxyModel):
-    """Intermediario entre la tabla y el modelo: la ordenación la hace el propio modelo."""
-
-    def sort(self, columna: int, orden=Qt.SortOrder.AscendingOrder):
-        if self.sourceModel() is not None:
-            self.sourceModel().sort(columna, orden)

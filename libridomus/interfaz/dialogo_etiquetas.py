@@ -75,7 +75,8 @@ class DialogoEtiquetas(QDialog):
             if not destino:
                 return False
         try:
-            etiquetas.generar_pdf(self.con, self.marcados(), destino, configuracion.obtener("etiquetas_titulos"))
+            with comun.ocupado(None, "Generando etiquetas…"):
+                etiquetas.generar_pdf(self.con, self.marcados(), destino, configuracion.obtener("etiquetas_titulos"))
         except (OSError, ValueError) as e:
             comun.error(self, f"No se ha podido crear el PDF: {e}")
             return False

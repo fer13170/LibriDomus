@@ -2,11 +2,12 @@
 
 import sys
 from collections.abc import Callable
+from contextlib import contextmanager
 from pathlib import Path
 
 from PySide6.QtCore import (QLibraryInfo, QLocale, QObject, QProcess, QRunnable, QThreadPool,
-                            QTranslator, Signal, Slot)
-from PySide6.QtGui import QIcon
+                            QTranslator, Qt, Signal, Slot)
+from PySide6.QtGui import QCursor, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton, QWidget
 
 from .. import NOMBRE
@@ -123,18 +124,53 @@ def recolorear_botones(raiz: QWidget) -> None:
             b.setIcon(tema.icono(*datos))
 
 
+def _mensaje(padre, icono, texto: str, botones, defecto=None) -> QMessageBox:
+    """Cuadro de mensaje con texto SIEMPRE plano: los datos del usuario (títulos con «<», etc.)
+    nunca se interpretan como HTML."""
+    caja = QMessageBox(icono, NOMBRE, texto, botones, padre)
+    caja.setTextFormat(Qt.TextFormat.PlainText)
+    if defecto is not None:
+        caja.setDefaultButton(defecto)
+    return caja
+
+
 def error(padre: QWidget | None, mensaje: str) -> None:
-    QMessageBox.warning(padre, NOMBRE, mensaje)
+    _mensaje(padre, QMessageBox.Icon.Warning, mensaje, QMessageBox.StandardButton.Ok).exec()
 
 
 def aviso(padre: QWidget | None, mensaje: str) -> None:
-    QMessageBox.information(padre, NOMBRE, mensaje)
+    _mensaje(padre, QMessageBox.Icon.Information, mensaje, QMessageBox.StandardButton.Ok).exec()
 
 
 def confirmar(padre: QWidget | None, mensaje: str) -> bool:
-    respuesta = QMessageBox.question(
-        padre, NOMBRE, mensaje,
-        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        QMessageBox.StandardButton.No,
-    )
-    return respuesta == QMessageBox.StandardButton.Yes
+    caja = _mensaje(padre, QMessageBox.Icon.Question, mensaje,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+    return caja.exec() == QMessageBox.StandardButton.Yes
+
+
+def preguntar(texto: str, detalle: str, opciones: list[str], padre: QWidget | None = None) -> int | None:
+    """Pregunta con botones propios. Devuelve el índice de la opción elegida (None si se cierra)."""
+    caja = _mensaje(padre, QMessageBox.Icon.Warning, texto, QMessageBox.StandardButton.NoButton)
+    caja.setInformativeText(detalle)
+    botones = [caja.addButton(o, QMessageBox.ButtonRole.AcceptRole if i == 0 else QMessageBox.ButtonRole.RejectRole)
+               for i, o in enumerate(opciones)]
+    caja.setDefaultButton(botones[0])
+    caja.exec()
+    pulsado = caja.clickedButton()
+    return botones.index(pulsado) if pulsado in botones else None
+
+
+@contextmanager
+def ocupado(ventana: QWidget | None = None, mensaje: str = "Trabajando…"):
+    """Cursor de espera y mensaje en la barra de estado durante una operación larga."""
+    QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
+    barra = ventana.statusBar() if ventana is not None and hasattr(ventana, "statusBar") else None
+    if barra is not None:
+        barra.showMessage(mensaje)
+    QApplication.processEvents()
+    try:
+        yield
+    finally:
+        QApplication.restoreOverrideCursor()
+        if barra is not None:
+            barra.clearMessage()

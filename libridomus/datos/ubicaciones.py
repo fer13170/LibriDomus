@@ -10,6 +10,7 @@ from .. import texto
 from .conexion import transaccion
 
 SEPARADOR_RUTA = " › "
+LONGITUD_MAXIMA_CODIGO = 20  # caracteres; los códigos se imprimen en las etiquetas
 
 
 class ErrorUbicacion(Exception):
@@ -177,12 +178,21 @@ def sugerir_codigo(con: sqlite3.Connection, padre_id: int | None, nombre: str,
 
     Los hijos directos de la casa (las plantas) no llevan el código de la casa delante.
     """
-    base = texto.abreviar(nombre)
+    abreviatura = texto.abreviar(nombre)
+    base = abreviatura
     padre = obtener(con, padre_id) if padre_id else None
     if padre is not None and padre.padre_id is not None:
-        base = f"{padre.codigo}-{base}"
+        base = f"{padre.codigo}-{abreviatura}"
+        if len(base) > LONGITUD_MAXIMA_CODIGO:
+            # En ubicaciones muy anidadas el código crecería sin fin: se conserva solo el primer
+            # tramo (la planta) y la abreviatura. El sufijo numérico garantiza que sea único.
+            base = f"{padre.codigo.split('-')[0]}-{abreviatura}"
+    # Una sola consulta trae los códigos que empiezan igual (antes: una consulta por cada intento).
+    patron = base.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    usados = {f[0].upper() for f in con.execute(
+        "SELECT codigo FROM ubicacion WHERE codigo LIKE ? ESCAPE '\\' AND id IS NOT ?", (patron, excluir_id))}
     codigo, n = base, 2
-    while _codigo_ocupado(con, codigo, excluir_id):
+    while codigo.upper() in usados:
         codigo, n = f"{base}{n}" if base[-1].isalpha() else f"{base}-{n}", n + 1
     return codigo
 
@@ -224,12 +234,20 @@ def actualizar(con: sqlite3.Connection, ubicacion_id: int, nombre: str, tipo_id:
         raise ErrorUbicacion("El nombre y el código son obligatorios.")
     if _codigo_ocupado(con, codigo, ubicacion_id):
         raise ErrorUbicacion(f"El código «{codigo}» ya está en uso.")
+    anterior = obtener(con, ubicacion_id)
     with transaccion(con):
         con.execute(
             "UPDATE ubicacion SET nombre = ?, tipo_id = ?, codigo = ?, descripcion = ? WHERE id = ?",
             (nombre, tipo_id, codigo, descripcion.strip(), ubicacion_id),
         )
-        busqueda.reindexar_ubicacion(con, ubicacion_id)  # la ruta forma parte del índice
+        # La ruta forma parte del índice de búsqueda, pero solo cambia si cambia el nombre.
+        if anterior is not None and anterior.nombre != nombre:
+            if anterior.padre_id is None:
+                # La raíz (la casa) no aparece en las rutas, salvo en lo guardado directamente en ella.
+                for (id_,) in con.execute("SELECT id FROM elemento WHERE ubicacion_id = ?", (ubicacion_id,)).fetchall():
+                    busqueda.reindexar(con, id_)
+            else:
+                busqueda.reindexar_ubicacion(con, ubicacion_id)
 
 
 def mover(con: sqlite3.Connection, ubicacion_id: int, nuevo_padre_id: int | None, indice: int | None = None) -> None:
@@ -238,6 +256,7 @@ def mover(con: sqlite3.Connection, ubicacion_id: int, nuevo_padre_id: int | None
 
     if nuevo_padre_id is not None and nuevo_padre_id in descendientes(con, ubicacion_id):
         raise ErrorUbicacion("No se puede mover una ubicación dentro de sí misma.")
+    padre_anterior = obtener(con, ubicacion_id).padre_id
     with transaccion(con):
         hermanos = [u.id for u in hijos(con, nuevo_padre_id) if u.id != ubicacion_id]
         indice = len(hermanos) if indice is None else max(0, min(indice, len(hermanos)))
@@ -245,7 +264,8 @@ def mover(con: sqlite3.Connection, ubicacion_id: int, nuevo_padre_id: int | None
         con.execute("UPDATE ubicacion SET padre_id = ? WHERE id = ?", (nuevo_padre_id, ubicacion_id))
         for orden, id_ in enumerate(hermanos):
             con.execute("UPDATE ubicacion SET orden = ? WHERE id = ?", (orden, id_))
-        busqueda.reindexar_ubicacion(con, ubicacion_id)
+        if padre_anterior != nuevo_padre_id:  # solo reordenar (p. ej. las plantas) no cambia ninguna ruta
+            busqueda.reindexar_ubicacion(con, ubicacion_id)
 
 
 def borrar(con: sqlite3.Connection, ubicacion_id: int, destino_id: int | None = None) -> int:
@@ -256,9 +276,13 @@ def borrar(con: sqlite3.Connection, ubicacion_id: int, destino_id: int | None = 
     """
     from ..servicios import busqueda
 
+    from .elementos import tandas
+
     ids = descendientes(con, ubicacion_id)
-    marcas = ",".join("?" * len(ids))
-    elementos = [f[0] for f in con.execute(f"SELECT id FROM elemento WHERE ubicacion_id IN ({marcas})", ids)]
+    elementos = []
+    for tanda in tandas(ids):  # por tandas: SQLite limita los parámetros por consulta
+        marcas = ",".join("?" * len(tanda))
+        elementos += [f[0] for f in con.execute(f"SELECT id FROM elemento WHERE ubicacion_id IN ({marcas})", tanda)]
     if elementos and destino_id is None:
         raise ErrorUbicacion(
             f"Contiene {len(elementos)} elementos. Indica a qué ubicación deben moverse antes de borrarla."
@@ -266,11 +290,13 @@ def borrar(con: sqlite3.Connection, ubicacion_id: int, destino_id: int | None = 
     if destino_id is not None and destino_id in ids:
         raise ErrorUbicacion("El destino no puede estar dentro de la ubicación que se borra.")
     with transaccion(con):
-        if elementos:
-            con.execute(f"UPDATE elemento SET ubicacion_id = ? WHERE ubicacion_id IN ({marcas})", [destino_id, *ids])
+        for tanda in tandas(elementos):
+            marcas = ",".join("?" * len(tanda))
+            con.execute(f"UPDATE elemento SET ubicacion_id = ? WHERE id IN ({marcas})", [destino_id, *tanda])
         # Se borran de las hojas hacia arriba para respetar la relación padre-hijo.
         for id_ in reversed(ids):
             con.execute("DELETE FROM ubicacion WHERE id = ?", (id_,))
+        rutas_actuales = rutas_todas(con)
         for id_ in elementos:
-            busqueda.reindexar(con, id_)
+            busqueda.reindexar(con, id_, rutas_actuales)
     return len(elementos)

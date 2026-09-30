@@ -7,6 +7,7 @@
 - Restaurar: desde una copia .db o .zip. Antes se guarda el estado actual por si acaso.
 """
 
+import json
 import os
 import shutil
 import sqlite3
@@ -64,6 +65,10 @@ def listar() -> list[Copia]:
 
 
 def copia_manual(con: sqlite3.Connection, destino_zip: Path | str) -> Path:
+    """ZIP con la base de datos, las portadas y las preferencias.
+
+    La clave de Google Books NO se incluye: la copia puede acabar en otras manos.
+    """
     destino_zip = Path(destino_zip)
     with tempfile.TemporaryDirectory() as temporal:
         bd = conexion.copiar_en_caliente(con, Path(temporal) / "biblioteca.db")
@@ -72,29 +77,138 @@ def copia_manual(con: sqlite3.Connection, destino_zip: Path | str) -> Path:
             for imagen in rutas.carpeta_portadas().glob("*.jpg"):
                 z.write(imagen, f"portadas/{imagen.name}")
             if rutas.ruta_configuracion().exists():
-                z.write(rutas.ruta_configuracion(), "config.json")
+                try:
+                    ajustes = json.loads(rutas.ruta_configuracion().read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    ajustes = {}
+                if isinstance(ajustes, dict):
+                    ajustes.pop("clave_google_books", None)
+                    z.writestr("config.json", json.dumps(ajustes, ensure_ascii=False, indent=2))
     return destino_zip
 
 
+# ---------------------------------------------------------------- validación de copias
+
+def _esquema(con: sqlite3.Connection) -> tuple[dict[str, set[str]], set[str]]:
+    """(tablas con sus columnas, otros objetos del esquema como disparadores o vistas)."""
+    tablas: dict[str, set[str]] = {}
+    otros: set[str] = set()
+    for tipo, nombre in con.execute("SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'"):
+        if tipo == "table":
+            tablas[nombre] = {f[1] for f in con.execute(f'PRAGMA table_info("{nombre}")')}
+        elif tipo in ("trigger", "view"):
+            otros.add(f"{tipo} {nombre}")
+    return tablas, otros
+
+
+def esquema_de_referencia(version: int) -> dict[str, set[str]]:
+    """Tablas y columnas que tiene una base de datos de LibriDomus en esa versión del esquema."""
+    ref = sqlite3.connect(":memory:")
+    try:
+        for sql in esquema.MIGRACIONES[:version]:
+            ref.executescript(sql)
+        return _esquema(ref)[0]
+    finally:
+        ref.close()
+
+
 def validar_base_datos(ruta: Path) -> int:
-    """Comprueba que el archivo es una base de datos de este programa. Devuelve su versión de esquema."""
+    """Comprueba que el archivo es una base de datos de LibriDomus sin manipular. Devuelve su versión.
+
+    Exige exactamente las tablas y columnas de su versión del esquema y rechaza disparadores y
+    vistas: una copia ajena podría esconder un disparador que borrase datos al usarla.
+    """
     try:
         prueba = conexion.abrir_solo_lectura(ruta)
         try:
             version = prueba.execute("PRAGMA user_version").fetchone()[0]
-            tablas = {f[0] for f in prueba.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+            tablas, otros = _esquema(prueba)
             integridad = prueba.execute("PRAGMA quick_check").fetchone()[0]
         finally:
             prueba.close()
     except sqlite3.DatabaseError as error:
         raise ErrorCopia("El archivo no es una base de datos válida.") from error
-    if not {"elemento", "ubicacion", "tipo_elemento"} <= tablas or version < 1:
+    if version < 1 or not {"elemento", "ubicacion", "tipo_elemento"} <= set(tablas):
         raise ErrorCopia("El archivo no es una copia de LibriDomus.")
     if version > esquema.VERSION_ESQUEMA:
         raise ErrorCopia("La copia es de una versión más nueva del programa.")
     if integridad != "ok":
         raise ErrorCopia("La copia está dañada.")
+    referencia = esquema_de_referencia(version)
+    faltan = [f"{t}.{c}" for t, cols in referencia.items() for c in sorted(cols - tablas.get(t, set()))]
+    sobran = sorted(set(tablas) - set(referencia))
+    if faltan or sobran or otros:
+        detalle = "; ".join(filter(None, [
+            f"faltan {', '.join(faltan[:5])}" if faltan else "",
+            f"tablas desconocidas: {', '.join(sobran[:5])}" if sobran else "",
+            f"contiene {', '.join(sorted(otros)[:5])}" if otros else ""]))
+        raise ErrorCopia(f"La copia no tiene la estructura de LibriDomus o ha sido modificada ({detalle}).")
     return version
+
+
+def probar_apertura(ruta: Path) -> None:
+    """Abre una copia (sobre un duplicado temporal) como lo haría el programa, migración incluida."""
+    from .busqueda import Filtros, buscar
+
+    with tempfile.TemporaryDirectory() as temporal:
+        duplicado = Path(temporal) / "prueba.db"
+        shutil.copy2(ruta, duplicado)
+        try:
+            con = conexion.abrir(duplicado, comprobar_integridad=True, copia_antes_de_migrar=False)
+        except conexion.ErrorBaseDatos as error:
+            raise ErrorCopia(f"La copia no se puede abrir: {error}") from error
+        try:
+            buscar(con, Filtros())
+            con.execute("SELECT COUNT(*) FROM elemento_fts").fetchone()
+        except sqlite3.Error as error:
+            raise ErrorCopia(f"La copia no funciona con esta versión del programa ({error}).") from error
+        finally:
+            con.close()
+
+
+# ---------------------------------------------------------------- extracción segura de ZIP
+
+LIMITE_ZIP = 8 * 2**30         # 8 GB descomprimidos como máximo
+RATIO_SOSPECHOSO = 200         # un archivo que se comprime más de 200:1 y ocupa > 50 MB es una «bomba»
+
+
+def _miembro_valido(nombre: str) -> bool:
+    if nombre in ("biblioteca.db", "config.json"):
+        return True
+    if nombre.startswith("portadas/"):
+        archivo = nombre[len("portadas/"):]
+        return bool(archivo) and "/" not in archivo and "\\" not in archivo and archivo.lower().endswith(".jpg") \
+            and archivo not in (".", "..")
+    return False
+
+
+def _extraer_zip(origen: Path, destino: Path) -> None:
+    """Extrae solo lo que es de LibriDomus, comprobando tamaños y espacio libre antes de escribir."""
+    try:
+        with zipfile.ZipFile(origen) as z:
+            miembros = [i for i in z.infolist() if not i.is_dir() and _miembro_valido(i.filename)]
+            if "biblioteca.db" not in {i.filename for i in miembros}:
+                raise ErrorCopia("El ZIP no contiene biblioteca.db.")
+            total = sum(i.file_size for i in miembros)
+            for i in miembros:
+                if i.file_size > 50 * 2**20 and i.file_size / max(1, i.compress_size) > RATIO_SOSPECHOSO:
+                    raise ErrorCopia(f"El ZIP tiene un archivo sospechoso ({i.filename}): no es una copia normal.")
+            if total > LIMITE_ZIP:
+                raise ErrorCopia("La copia es demasiado grande para ser de LibriDomus.")
+            if total > shutil.disk_usage(destino).free * 0.9:
+                raise ErrorCopia("No hay espacio libre suficiente en el disco para restaurar la copia.")
+            for i in miembros:
+                ruta = destino / Path(*i.filename.split("/"))
+                ruta.parent.mkdir(parents=True, exist_ok=True)
+                with z.open(i) as entrada, open(ruta, "wb") as salida:
+                    escrito = 0
+                    while bloque := entrada.read(1 << 20):
+                        escrito += len(bloque)
+                        if escrito > i.file_size:  # el ZIP miente sobre el tamaño
+                            raise ErrorCopia("El ZIP está dañado o manipulado.")
+                        salida.write(bloque)
+    except zipfile.BadZipFile as error:
+        raise ErrorCopia("El archivo ZIP está dañado.") from error
 
 
 def restaurar(con_actual: sqlite3.Connection | None, origen: Path | str) -> Path:
@@ -106,19 +220,13 @@ def restaurar(con_actual: sqlite3.Connection | None, origen: Path | str) -> Path
     origen = Path(origen)
     with tempfile.TemporaryDirectory() as temporal:
         temporal = Path(temporal)
+        bd_nueva = temporal / "biblioteca.db"
         if origen.suffix.lower() == ".zip":
-            try:
-                with zipfile.ZipFile(origen) as z:
-                    if "biblioteca.db" not in z.namelist():
-                        raise ErrorCopia("El ZIP no contiene biblioteca.db.")
-                    z.extractall(temporal)
-            except zipfile.BadZipFile as error:
-                raise ErrorCopia("El archivo ZIP está dañado.") from error
-            bd_nueva = temporal / "biblioteca.db"
+            _extraer_zip(origen, temporal)
         else:
-            bd_nueva = temporal / "biblioteca.db"
             shutil.copy2(origen, bd_nueva)
         validar_base_datos(bd_nueva)
+        probar_apertura(bd_nueva)
 
         # Red de seguridad: copia del estado actual antes de sustituirlo.
         previa = rutas.carpeta_copias() / f"antes_de_restaurar_{_marca()}.db"
