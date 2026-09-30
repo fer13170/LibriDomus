@@ -36,8 +36,23 @@ def ejecutar(argv: list[str]) -> int:
     ventana = VentanaPrincipal(con)
     ventana.show()
     codigo = app.exec()
-    con.close()
+    if not ventana.restaurado:  # tras restaurar, la conexión ya está cerrada
+        copia_al_salir(con)
+        con.close()
     return codigo
+
+
+def copia_al_salir(con) -> None:
+    """Copia automática de la base de datos al cerrar (si está activada en Preferencias)."""
+    from ..servicios import configuracion, copias
+
+    ajustes = configuracion.cargar()
+    if not ajustes["copia_al_cerrar"]:
+        return
+    try:
+        copias.copia_automatica(con, int(ajustes["copias_a_conservar"]))
+    except OSError as error:
+        QMessageBox.warning(None, NOMBRE, f"No se ha podido hacer la copia automática:\n{error}")
 
 
 if __name__ == "__main__":

@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QDialog, QFormL
 from ..datos import elementos, tipos
 from ..datos.elementos import Elemento, ErrorElemento
 from ..datos.tipos import Campo, TipoElemento
-from ..servicios import portadas
 from ..servicios.isbn import DatosLibro
 from . import autocompletar, comun
 from .panel_portada import PanelPortada
@@ -437,15 +436,13 @@ class FichaElemento(QDialog):
             if not comun.confirmar(self, f"Ya hay un elemento con el identificador {identificador}:\n"
                                          f"«{otro.titulo}».\n\n¿Guardar igualmente?"):
                 return False
-        portada_anterior = self.original.portada if self.original else ""
         try:
             id_ = elementos.guardar(self.con, e)
         except ErrorElemento as error:
             comun.error(self, str(error))
             return False
-        # Imágenes que ya no se usan: la anterior (si se cambió) y las probadas y descartadas.
-        if portada_anterior and portada_anterior != e.portada:
-            portadas.borrar(portada_anterior)
+        # Las imágenes probadas y descartadas en esta ficha se borran ya. La portada anterior
+        # (si se cambió) la borra la limpieza del arranque si ninguna copia de seguridad la usa.
         self.portada.descartar_nuevas(conservar=e.portada)
         self.original = elementos.obtener(self.con, id_)
         self.guardado.emit(id_)

@@ -3,17 +3,21 @@
 import sqlite3
 from datetime import date
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QHBoxLayout, QHeaderView,
-                               QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu, QPushButton, QSplitter,
+                               QFileDialog, QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu,
+                               QPushButton, QSplitter,
                                QTableView, QToolButton, QVBoxLayout, QWidget)
 
 from .. import NOMBRE, VERSION
 from ..datos import elementos, tipos, ubicaciones
-from ..servicios import busqueda
+from ..servicios import busqueda, copias, informes
 from ..servicios.busqueda import Filtros
 from . import comun
+from .comun import reiniciar
+from .dialogo_copias import DialogoRestaurar
+from .dialogo_etiquetas import DialogoEtiquetas
 from .alta_masiva import AltaMasiva
 from .editor_tipos import EditorTipos
 from .arbol_ubicaciones import ID_SIN_UBICACION, ID_TODAS, ArbolUbicaciones
@@ -28,6 +32,7 @@ class VentanaPrincipal(QMainWindow):
     def __init__(self, con: sqlite3.Connection):
         super().__init__()
         self.con = con
+        self.restaurado = False
         self.setWindowTitle(f"{NOMBRE} {VERSION}")
         self.setWindowIcon(comun.icono_app())
         self.resize(1200, 720)
@@ -175,6 +180,19 @@ class VentanaPrincipal(QMainWindow):
         self.acc_devolver.triggered.connect(self.devolver)
         self.acc_preferencias = QAction("Preferencias…", self)
         self.acc_preferencias.triggered.connect(lambda: Preferencias(self).exec())
+        self.acc_etiquetas = QAction("🏷 Etiquetas…", self, shortcut=QKeySequence("Ctrl+E"))
+        self.acc_etiquetas.setToolTip("Imprimir etiquetas con código, contenido y QR para cajas y baldas")
+        self.acc_etiquetas.triggered.connect(self.imprimir_etiquetas)
+        self.acc_inventario = QAction("Inventario de la ubicación seleccionada…", self)
+        self.acc_inventario.triggered.connect(self.informe_inventario)
+        self.acc_inf_prestados = QAction("Elementos prestados…", self)
+        self.acc_inf_prestados.triggered.connect(self.informe_prestados)
+        self.acc_inf_busqueda = QAction("Resultado de la búsqueda actual…", self)
+        self.acc_inf_busqueda.triggered.connect(self.informe_busqueda)
+        self.acc_copia = QAction("Hacer copia de seguridad…", self)
+        self.acc_copia.triggered.connect(self.copia_manual)
+        self.acc_restaurar = QAction("Restaurar copia de seguridad…", self)
+        self.acc_restaurar.triggered.connect(self.restaurar_copia)
         self.acc_buscar = QAction("Buscar", self, shortcut=QKeySequence.StandardKey.Find)
         self.acc_buscar.triggered.connect(lambda: (self.busqueda.setFocus(), self.busqueda.selectAll()))
         self.addAction(self.acc_buscar)
@@ -205,6 +223,7 @@ class VentanaPrincipal(QMainWindow):
         barra.addWidget(self.ir_codigo)
         barra.addSeparator()
         barra.addAction(self.acc_ubicaciones)
+        barra.addAction(self.acc_etiquetas)
 
     def _llenar_menu_nuevo(self):
         self.menu_nuevo.clear()
@@ -214,6 +233,9 @@ class VentanaPrincipal(QMainWindow):
 
     def _crear_menus(self):
         archivo = self.menuBar().addMenu("&Archivo")
+        archivo.addAction(self.acc_copia)
+        archivo.addAction(self.acc_restaurar)
+        archivo.addSeparator()
         archivo.addAction(self.acc_preferencias)
         archivo.addSeparator()
         salir = archivo.addAction("Salir")
@@ -230,6 +252,12 @@ class VentanaPrincipal(QMainWindow):
         self.menu_catalogo = self.menuBar().addMenu("&Catálogo")
         self.menu_catalogo.addAction(self.acc_ubicaciones)
         self.menu_catalogo.addAction(self.acc_tipos)
+
+        informes = self.menuBar().addMenu("&Informes")
+        informes.addAction(self.acc_etiquetas)
+        informes.addSeparator()
+        for accion in (self.acc_inventario, self.acc_inf_prestados, self.acc_inf_busqueda):
+            informes.addAction(accion)
 
         self.menu_ayuda = self.menuBar().addMenu("Ay&uda")
         acerca = self.menu_ayuda.addAction("Acerca de…")
@@ -382,6 +410,76 @@ class VentanaPrincipal(QMainWindow):
         editor.exec()
         if editor.hubo_cambios:
             self.refrescar_todo()
+
+    # ------------------------------------------------------------ etiquetas e informes
+
+    def imprimir_etiquetas(self):
+        DialogoEtiquetas(self.con, self.ubicacion_para_nuevo(), self).exec()
+
+    def _pedir_pdf(self, nombre: str) -> str | None:
+        destino, _ = QFileDialog.getSaveFileName(self, "Guardar informe", nombre, "PDF (*.pdf)")
+        return destino or None
+
+    def _abrir(self, ruta: str):
+        QDesktopServices.openUrl(QUrl.fromLocalFile(ruta))
+
+    def informe_inventario(self, destino: str | None = None, abrir: bool = True):
+        ubic = self.ubicacion_para_nuevo()
+        nombre = ubicaciones.obtener(self.con, ubic).codigo if ubic else "casa"
+        destino = destino or self._pedir_pdf(f"inventario_{nombre}.pdf")
+        if destino:
+            informes.inventario(self.con, ubic, destino)
+            abrir and self._abrir(destino)
+
+    def informe_prestados(self, destino: str | None = None, abrir: bool = True):
+        destino = destino or self._pedir_pdf("prestados.pdf")
+        if destino:
+            informes.prestados(self.con, destino)
+            abrir and self._abrir(destino)
+
+    def informe_busqueda(self, destino: str | None = None, abrir: bool = True):
+        destino = destino or self._pedir_pdf("busqueda.pdf")
+        if destino:
+            partes = [self.ruta_actual.text()]
+            if self.busqueda.text().strip():
+                partes.append(f"búsqueda «{self.busqueda.text().strip()}»")
+            # Se respeta el orden en que se ve la tabla.
+            filas = [self.modelo.resultado(self.ordenador.mapToSource(self.ordenador.index(i, 0)).row())
+                     for i in range(self.ordenador.rowCount())]
+            informes.resultados(filas, " · ".join(partes), destino)
+            abrir and self._abrir(destino)
+
+    # ------------------------------------------------------------ copias de seguridad
+
+    def copia_manual(self, destino: str | None = None):
+        if destino is None:
+            nombre = f"BibliotecarioVirtual_copia_{date.today():%Y%m%d}.zip"
+            destino, _ = QFileDialog.getSaveFileName(self, "Guardar copia de seguridad", nombre, "ZIP (*.zip)")
+            if not destino:
+                return
+        try:
+            copias.copia_manual(self.con, destino)
+        except OSError as e:
+            comun.error(self, f"No se ha podido hacer la copia: {e}")
+            return
+        comun.aviso(self, f"Copia de seguridad guardada en:\n{destino}\n\n"
+                          "Incluye los datos, las portadas y las preferencias.")
+
+    def restaurar_copia(self):
+        dialogo = DialogoRestaurar(self)
+        if not dialogo.exec() or not dialogo.elegida:
+            return
+        if not comun.confirmar(self, "¿Sustituir los datos actuales por los de la copia elegida?\n\n"
+                                     "Se guardará antes una copia del estado actual."):
+            return
+        try:
+            copias.restaurar(self.con, dialogo.elegida)
+        except (copias.ErrorCopia, OSError) as e:
+            comun.error(self, f"No se ha podido restaurar: {e}")
+            return
+        self.restaurado = True  # la conexión ya está cerrada: no se hace copia al salir
+        comun.aviso(self, "Copia restaurada. El programa se reiniciará ahora.")
+        reiniciar()
 
     def ir_a_codigo(self):
         codigo = self.ir_codigo.text().strip()

@@ -140,11 +140,23 @@ def test_limpiar_portadas_huerfanas(app, con):
     assert portadas.ruta(usada) and portadas.ruta(huerfana) is None
 
 
-def test_borrar_elemento_borra_su_portada(app, con):
+def test_portada_de_elemento_borrado_se_limpia_al_arrancar(app, con):
     nombre = portadas.guardar_desde_bytes(imagen_png(10, 10))
     id_ = elementos.guardar(con, Elemento(tipo_id=tipos.por_nombre(con, "Libro").id, titulo="X", portada=nombre))
     elementos.borrar(con, [id_])
-    assert portadas.ruta(nombre) is None
+    assert portadas.ruta(nombre)            # no se borra en el acto...
+    portadas.limpiar_huerfanas(con)
+    assert portadas.ruta(nombre) is None    # ...sino en la limpieza del arranque
+
+
+def test_limpieza_respeta_portadas_de_las_copias(app, con):
+    from bibliotecario.servicios import copias
+    nombre = portadas.guardar_desde_bytes(imagen_png(10, 10))
+    id_ = elementos.guardar(con, Elemento(tipo_id=tipos.por_nombre(con, "Libro").id, titulo="X", portada=nombre))
+    copias.copia_automatica(con, 10)
+    elementos.borrar(con, [id_])
+    assert portadas.limpiar_huerfanas(con) == 0
+    assert portadas.ruta(nombre)  # la copia la necesita si se restaura
 
 
 # ---------------------------------------------------------------- ficha
@@ -192,7 +204,7 @@ def test_ficha_cancelar_borra_portada_nueva(app, con, mensajes):
     assert portadas.ruta(nombre) is None
 
 
-def test_ficha_cambiar_portada_borra_la_anterior(app, con, mensajes):
+def test_ficha_cambiar_portada_limpia_las_descartadas(app, con, mensajes):
     vieja = portadas.guardar_desde_bytes(imagen_png(20, 20))
     id_ = elementos.guardar(con, Elemento(tipo_id=tipos.por_nombre(con, "Libro").id, titulo="X", portada=vieja))
     ficha = FichaElemento(con, elemento_id=id_)
@@ -201,8 +213,10 @@ def test_ficha_cambiar_portada_borra_la_anterior(app, con, mensajes):
     ficha.portada.poner_bytes(imagen_png(40, 40, "green"))
     nueva = ficha.portada.nombre
     assert ficha.guardar()
-    assert portadas.ruta(vieja) is None and portadas.ruta(probada) is None and portadas.ruta(nueva)
+    assert portadas.ruta(probada) is None and portadas.ruta(nueva)   # la probada se borra ya
     assert elementos.obtener(con, id_).portada == nueva
+    portadas.limpiar_huerfanas(con)
+    assert portadas.ruta(vieja) is None                               # la anterior, al arrancar
 
 
 def test_ficha_prestamo_con_fecha_de_hoy_y_devuelto(app, con, mensajes):

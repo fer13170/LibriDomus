@@ -4,7 +4,6 @@ import re
 import sqlite3
 from dataclasses import dataclass, field
 
-from .. import rutas
 from .conexion import transaccion
 
 ESTADOS = ["Nuevo", "Muy bueno", "Bueno", "Regular", "Deteriorado"]
@@ -157,18 +156,18 @@ def obtener(con: sqlite3.Connection, elemento_id: int) -> Elemento | None:
 
 
 def borrar(con: sqlite3.Connection, ids: list[int]) -> int:
-    """Borra elementos (y sus portadas). Devuelve cuántos se han borrado."""
+    """Borra elementos. Devuelve cuántos se han borrado.
+
+    Sus portadas no se borran aquí: puede usarlas una copia de seguridad. Se eliminan al
+    arrancar el programa si ya nadie las usa (servicios/portadas.py -> limpiar_huerfanas).
+    """
     if not ids:
         return 0
     marcas = ",".join("?" * len(ids))
-    portadas = [f[0] for f in con.execute(
-        f"SELECT portada FROM elemento WHERE id IN ({marcas}) AND portada <> ''", ids)]
     with transaccion(con):
         borrados = con.execute(f"DELETE FROM elemento WHERE id IN ({marcas})", ids).rowcount
         con.execute(f"DELETE FROM elemento_fts WHERE rowid IN ({marcas})", ids)
         _limpiar_huerfanos(con)
-    for nombre in portadas:
-        (rutas.carpeta_portadas() / nombre).unlink(missing_ok=True)
     return borrados
 
 

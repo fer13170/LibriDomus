@@ -1,10 +1,11 @@
 """Utilidades de interfaz compartidas por todas las ventanas."""
 
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import (QLibraryInfo, QLocale, QObject, QRunnable, QThreadPool, QTranslator,
-                            Signal, Slot)
+from PySide6.QtCore import (QLibraryInfo, QLocale, QObject, QProcess, QRunnable, QThreadPool,
+                            QTranslator, Signal, Slot)
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
@@ -87,6 +88,16 @@ def en_segundo_plano(funcion: Callable[[], object], al_terminar: Callable[[objec
     senales = _Senales(al_terminar, al_fallar)
     _tareas_vivas.add(senales)  # evita que Python lo destruya antes de recibir la respuesta
     QThreadPool.globalInstance().start(_Tarea(funcion, senales))
+
+
+def reiniciar() -> None:
+    """Vuelve a lanzar el programa y cierra el actual (tras restaurar una copia)."""
+    if getattr(sys, "frozen", False):
+        programa, argumentos = sys.executable, sys.argv[1:]
+    else:
+        programa, argumentos = sys.executable, sys.argv
+    QProcess.startDetached(programa, argumentos)
+    QApplication.quit()
 
 
 def icono_app() -> QIcon:

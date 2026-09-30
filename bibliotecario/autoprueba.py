@@ -35,6 +35,7 @@ def ejecutar() -> int:
     paso("Ventanas", _probar_ventanas)
     paso("Portadas JPEG", _probar_jpeg)
     paso("HTTPS (SSL)", _probar_ssl)
+    paso("PDF (etiquetas e informe)", _probar_pdf)
 
     lineas.append("RESULTADO: " + ("CORRECTO" if ok else "CON ERRORES"))
     texto = "\n".join(lineas)
@@ -131,6 +132,26 @@ def _probar_ssl():
 
     contexto = ssl.create_default_context()
     return f"{ssl.OPENSSL_VERSION}; {len(contexto.get_ca_certs()) or 'certificados del sistema'}"
+
+
+def _probar_pdf():
+    from PySide6.QtWidgets import QApplication
+
+    from .datos import conexion
+    from .servicios import etiquetas, informes
+
+    QApplication.instance() or QApplication(["autoprueba"])
+    with tempfile.TemporaryDirectory() as carpeta:
+        con = conexion.abrir(Path(carpeta) / "pdf.db")
+        try:
+            ids = [f[0] for f in con.execute("SELECT id FROM ubicacion")]
+            etiquetas.generar_pdf(con, ids, Path(carpeta) / "e.pdf")
+            informes.inventario(con, None, Path(carpeta) / "i.pdf")
+            tamanos = [(Path(carpeta) / n).stat().st_size for n in ("e.pdf", "i.pdf")]
+        finally:
+            con.close()
+    assert all(t > 500 for t in tamanos)
+    return f"etiquetas {tamanos[0]} B, inventario {tamanos[1]} B"
 
 
 def _probar_qr():

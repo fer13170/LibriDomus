@@ -64,9 +64,26 @@ def borrar(nombre: str) -> None:
         (rutas.carpeta_portadas() / Path(nombre).name).unlink(missing_ok=True)
 
 
+def _portadas_de_copias() -> set[str]:
+    """Portadas que usan las copias de seguridad guardadas (para no dejarlas cojas si se restauran)."""
+    usadas: set[str] = set()
+    for copia in rutas.carpeta_copias().glob("*.db"):
+        try:
+            bd = sqlite3.connect(f"file:{copia}?mode=ro", uri=True)
+            try:
+                usadas.update(f[0] for f in bd.execute("SELECT portada FROM elemento WHERE portada <> ''"))
+            finally:
+                bd.close()
+        except sqlite3.Error:
+            continue
+    return usadas
+
+
 def limpiar_huerfanas(con: sqlite3.Connection) -> int:
-    """Borra imágenes que ya no usa ningún elemento (p. ej. si se canceló una ficha)."""
+    """Borra imágenes que no usa ningún elemento ni ninguna copia de seguridad guardada
+    (p. ej. las de una ficha que se cerró de forma inesperada)."""
     en_uso = {f[0] for f in con.execute("SELECT portada FROM elemento WHERE portada <> ''")}
+    en_uso |= _portadas_de_copias()
     borradas = 0
     for archivo in rutas.carpeta_portadas().glob("*.jpg"):
         if archivo.name not in en_uso:

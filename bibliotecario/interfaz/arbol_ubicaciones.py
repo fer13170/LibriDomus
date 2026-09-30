@@ -107,7 +107,7 @@ class ArbolUbicaciones(QTreeWidget):
         return item.data(0, ROL_ID) if item else None
 
     def seleccionar(self, ubicacion_id: int | None) -> bool:
-        for item in self._todos_los_items():
+        for item in self.todos_los_items():
             if item.data(0, ROL_ID) == ubicacion_id:
                 padre = item.parent()
                 while padre:
@@ -118,7 +118,7 @@ class ArbolUbicaciones(QTreeWidget):
                 return True
         return False
 
-    def _todos_los_items(self):
+    def todos_los_items(self):
         pila = [self.topLevelItem(i) for i in range(self.topLevelItemCount())]
         while pila:
             item = pila.pop(0)
