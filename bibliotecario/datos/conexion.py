@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from .. import rutas
+from .. import rutas, texto
 from . import esquema, semillas
 
 
@@ -19,6 +19,7 @@ def abrir(ruta: Path | str | None = None) -> sqlite3.Connection:
     con = sqlite3.connect(ruta, isolation_level=None)  # transacciones explícitas
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
+    con.create_collation("ES", texto.comparar)  # ORDER BY ... COLLATE ES (sin acentos)
     _comprobar_fts5(con)
     migrar(con, ruta)
     return con

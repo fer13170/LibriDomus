@@ -32,6 +32,7 @@ def ejecutar() -> int:
     paso("Base de datos nueva", _probar_base_datos)
     paso("Qt", _probar_qt)
     paso("QR (segno)", _probar_qr)
+    paso("Ventanas", _probar_ventanas)
 
     lineas.append("RESULTADO: " + ("CORRECTO" if ok else "CON ERRORES"))
     texto = "\n".join(lineas)
@@ -81,6 +82,32 @@ def _probar_qt():
     app = QApplication.instance() or QApplication(["autoprueba"])
     assert app is not None
     return f"Qt {qVersion()}"
+
+
+def _probar_ventanas():
+    """Construye (sin mostrarlas) las ventanas principales sobre una base de datos temporal."""
+    from PySide6.QtWidgets import QApplication
+
+    from .datos import conexion
+    from .interfaz import comun
+    from .interfaz.editor_ubicaciones import EditorUbicaciones
+    from .interfaz.ficha_elemento import FichaElemento
+    from .interfaz.ventana_principal import VentanaPrincipal
+
+    app = QApplication.instance() or QApplication(["autoprueba"])
+    comun.preparar_aplicacion(app)
+    with tempfile.TemporaryDirectory() as carpeta:
+        con = conexion.abrir(Path(carpeta) / "ventanas.db")
+        try:
+            ventanas = [VentanaPrincipal(con), FichaElemento(con), EditorUbicaciones(con)]
+            for v in ventanas:
+                v.close()
+        finally:
+            con.close()
+    from PySide6.QtCore import QCoreApplication
+
+    traducido = QCoreApplication.translate("QPlatformTheme", "Close")
+    return f"{len(ventanas)} ventanas; 'Close' -> '{traducido}'"
 
 
 def _probar_qr():

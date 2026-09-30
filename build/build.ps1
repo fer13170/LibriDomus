@@ -1,4 +1,4 @@
-# Genera la versión portable de Bibliotecario Virtual.
+﻿# Genera la versión portable de Bibliotecario Virtual.
 #
 # Uso (desde la carpeta del proyecto, en PowerShell):
 #     .\build\build.ps1

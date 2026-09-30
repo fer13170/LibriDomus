@@ -2,16 +2,17 @@
 
 import sys
 
-from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QLabel
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from .. import NOMBRE, VERSION, rutas
 from ..datos import conexion
+from . import comun
 
 
 def ejecutar(argv: list[str]) -> int:
     app = QApplication(argv)
-    app.setApplicationName(NOMBRE)
     app.setApplicationVersion(VERSION)
+    comun.preparar_aplicacion(app)
 
     carpeta = rutas.carpeta_datos()
     if not rutas.se_puede_escribir(carpeta):
@@ -27,10 +28,9 @@ def ejecutar(argv: list[str]) -> int:
         QMessageBox.critical(None, NOMBRE, str(error))
         return 1
 
-    ventana = QMainWindow()
-    ventana.setWindowTitle(f"{NOMBRE} {VERSION}")
-    ventana.setCentralWidget(QLabel("Fase 0: base de datos lista."))
-    ventana.resize(800, 500)
+    from .ventana_principal import VentanaPrincipal
+
+    ventana = VentanaPrincipal(con)
     ventana.show()
     codigo = app.exec()
     con.close()
