@@ -1,9 +1,11 @@
 """Modelo de la tabla de resultados de la ventana principal."""
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
+from PySide6.QtCore import QAbstractTableModel, QMimeData, QModelIndex, QSortFilterProxyModel, Qt
 
 from .. import texto
 from ..servicios.busqueda import Resultado
+
+MIME_ELEMENTOS = "application/x-bibliotecario-elementos"
 
 COLUMNAS = ["Tipo", "Título", "Personas", "Año", "Ubicación", "Estado", "Prestado a"]
 ROL_CLAVE_ORDEN = Qt.ItemDataRole.UserRole + 1
@@ -32,6 +34,23 @@ class ModeloResultados(QAbstractTableModel):
 
     def resultado(self, fila: int) -> Resultado:
         return self.filas[fila]
+
+    # --- arrastrar elementos hacia el árbol de ubicaciones para moverlos
+    def flags(self, indice):
+        base = super().flags(indice)
+        return base | Qt.ItemFlag.ItemIsDragEnabled if indice.isValid() else base
+
+    def mimeTypes(self):  # noqa: N802 - nombre impuesto por Qt
+        return [MIME_ELEMENTOS]
+
+    def mimeData(self, indices):  # noqa: N802
+        ids = sorted({self.filas[i.row()].id for i in indices if i.isValid()})
+        datos = QMimeData()
+        datos.setData(MIME_ELEMENTOS, ",".join(map(str, ids)).encode())
+        return datos
+
+    def supportedDragActions(self):  # noqa: N802
+        return Qt.DropAction.MoveAction
 
     def data(self, indice, rol=Qt.ItemDataRole.DisplayRole):
         if not indice.isValid():

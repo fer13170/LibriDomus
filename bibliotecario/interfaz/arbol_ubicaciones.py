@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QAbstractItemView, QTreeWidget, QTreeWidgetItem
 
 from ..datos import ubicaciones
 from .. import texto
+from .modelo_resultados import MIME_ELEMENTOS
 
 ROL_ID = Qt.ItemDataRole.UserRole
 ID_TODAS = -1          # nodo especial "Todas las ubicaciones"
@@ -24,12 +25,17 @@ class ArbolUbicaciones(QTreeWidget):
     ubicacion_cambiada = Signal(object)  # id o None
 
     def __init__(self, con: sqlite3.Connection, contar: bool = False, especiales: bool = False,
-                 al_mover: Callable[[int, int | None, int], None] | None = None, parent=None):
+                 al_mover: Callable[[int, int | None, int], None] | None = None,
+                 al_soltar_elementos: Callable[[list[int], int | None], None] | None = None, parent=None):
         super().__init__(parent)
         self.con = con
         self.contar = contar
         self.especiales = especiales
         self.al_mover = al_mover
+        self.al_soltar_elementos = al_soltar_elementos
+        if al_soltar_elementos:
+            self.setAcceptDrops(True)
+            self.setDropIndicatorShown(True)
         self.setHeaderHidden(True)
         self.setUniformRowHeights(True)
         self.currentItemChanged.connect(lambda actual, _anterior: self.ubicacion_cambiada.emit(self.id_actual()))
@@ -138,7 +144,44 @@ class ArbolUbicaciones(QTreeWidget):
 
     # ------------------------------------------------------------ arrastrar y soltar
 
-    def dropEvent(self, event):  # noqa: N802 - nombre impuesto por Qt
+    def destino_elementos(self, punto) -> tuple[bool, int | None]:
+        """¿Se pueden soltar elementos en ese punto? Devuelve (válido, ubicacion_id)."""
+        item = self.itemAt(punto)
+        if item is None:
+            return False, None
+        id_ = item.data(0, ROL_ID)
+        if id_ == ID_SIN_UBICACION:
+            return True, None
+        return (id_ is not None and id_ >= 0), id_
+
+    def _soltar_elementos_admitido(self, event) -> bool:
+        return bool(self.al_soltar_elementos) and event.mimeData().hasFormat(MIME_ELEMENTOS)
+
+    def dragEnterEvent(self, event):  # noqa: N802 - nombre impuesto por Qt
+        if self._soltar_elementos_admitido(event):
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):  # noqa: N802
+        if self._soltar_elementos_admitido(event):
+            valido, _ = self.destino_elementos(event.position().toPoint())
+            event.acceptProposedAction() if valido else event.ignore()
+        else:
+            super().dragMoveEvent(event)
+
+    def dropEvent(self, event):  # noqa: N802
+        if self._soltar_elementos_admitido(event):
+            valido, destino = self.destino_elementos(event.position().toPoint())
+            if not valido:
+                event.ignore()
+                return
+            texto_ids = bytes(event.mimeData().data(MIME_ELEMENTOS)).decode()
+            ids = [int(x) for x in texto_ids.split(",") if x]
+            event.setDropAction(Qt.DropAction.IgnoreAction)  # la tabla no debe quitar filas por su cuenta
+            event.accept()
+            self.al_soltar_elementos(ids, destino)
+            return
         if not self.al_mover:
             event.ignore()
             return

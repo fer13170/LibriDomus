@@ -4,14 +4,17 @@ import sqlite3
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import (QAbstractItemView, QHeaderView, QLabel, QLineEdit, QMainWindow,
-                               QMenu, QSplitter, QTableView, QToolButton, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QHBoxLayout, QHeaderView,
+                               QLabel, QLineEdit, QMainWindow, QMenu, QPushButton, QSplitter,
+                               QTableView, QToolButton, QVBoxLayout, QWidget)
 
 from .. import NOMBRE, VERSION
 from ..datos import elementos, tipos, ubicaciones
 from ..servicios import busqueda
 from ..servicios.busqueda import Filtros
 from . import comun
+from .alta_masiva import AltaMasiva
+from .editor_tipos import EditorTipos
 from .arbol_ubicaciones import ID_SIN_UBICACION, ID_TODAS, ArbolUbicaciones
 from .editor_ubicaciones import EditorUbicaciones
 from .ficha_elemento import FichaElemento
@@ -27,8 +30,8 @@ class VentanaPrincipal(QMainWindow):
         self.setWindowIcon(comun.icono_app())
         self.resize(1200, 720)
 
-        # --- árbol
-        self.arbol = ArbolUbicaciones(con, contar=True, especiales=True)
+        # --- árbol (admite soltar elementos arrastrados desde la tabla para moverlos)
+        self.arbol = ArbolUbicaciones(con, contar=True, especiales=True, al_soltar_elementos=self.mover_a)
         self.filtro_arbol = QLineEdit(placeholderText="Filtrar ubicaciones…")
         izquierda = QWidget()
         capa_izq = QVBoxLayout(izquierda)
@@ -49,7 +52,10 @@ class VentanaPrincipal(QMainWindow):
         self.tabla.setAlternatingRowColors(True)
         self.tabla.verticalHeader().setVisible(False)
         self.tabla.setWordWrap(False)
+        self.tabla.setTextElideMode(Qt.TextElideMode.ElideMiddle)  # en rutas largas se ve el final
         self.tabla.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tabla.setDragEnabled(True)
+        self.tabla.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
         cabecera = self.tabla.horizontalHeader()
         cabecera.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         cabecera.setStretchLastSection(True)
@@ -61,6 +67,7 @@ class VentanaPrincipal(QMainWindow):
         capa_der.setContentsMargins(0, 0, 0, 0)
         self.capa_derecha = capa_der
         capa_der.addWidget(self.ruta_actual)
+        capa_der.addWidget(self._crear_filtros())
         capa_der.addWidget(self.tabla)
 
         divisor = QSplitter()
@@ -87,6 +94,63 @@ class VentanaPrincipal(QMainWindow):
 
     # ------------------------------------------------------------ construcción
 
+    def _crear_filtros(self) -> QWidget:
+        self.f_tipo = QComboBox()
+        self.f_etiqueta = QComboBox()
+        self.f_estado = QComboBox()
+        self.f_idioma = QComboBox()
+        self.f_prestados = QCheckBox("Prestados")
+        self.f_pendientes = QCheckBox("Pendientes (sin leer / ver…)")
+        self.f_limpiar = QPushButton("Quitar filtros")
+        self._llenar_filtros()
+        panel = QWidget()
+        capa = QHBoxLayout(panel)
+        capa.setContentsMargins(0, 0, 0, 0)
+        capa.addWidget(QLabel("Filtros:"))
+        for w in (self.f_tipo, self.f_etiqueta, self.f_estado, self.f_idioma, self.f_prestados,
+                  self.f_pendientes, self.f_limpiar):
+            capa.addWidget(w)
+        capa.addStretch()
+        for combo in (self.f_tipo, self.f_etiqueta, self.f_estado, self.f_idioma):
+            combo.currentIndexChanged.connect(lambda _i: self.refrescar_resultados())
+        for casilla in (self.f_prestados, self.f_pendientes):
+            casilla.toggled.connect(lambda _v: self.refrescar_resultados())
+        self.f_limpiar.clicked.connect(self.quitar_filtros)
+        return panel
+
+    def _llenar_filtros(self):
+        """Rellena los desplegables de filtro conservando lo que estuviera elegido."""
+        def llenar(combo: QComboBox, primero: str, opciones: list[tuple[str, object]]):
+            actual = combo.currentData()
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItem(primero, None)
+            for texto_, dato in opciones:
+                combo.addItem(texto_, dato)
+            indice = combo.findData(actual)
+            combo.setCurrentIndex(indice if indice >= 0 else 0)
+            combo.blockSignals(False)
+
+        llenar(self.f_tipo, "Todos los tipos",
+               [(f"{t.icono} {t.nombre}", t.id) for t in tipos.listar(self.con, con_campos=False)])
+        llenar(self.f_etiqueta, "Todas las etiquetas", [(e, e) for e in elementos.nombres_etiquetas(self.con)])
+        llenar(self.f_estado, "Cualquier estado", [(e, e) for e in elementos.ESTADOS])
+        usados = [f[0] for f in self.con.execute(
+            "SELECT DISTINCT idioma FROM elemento WHERE idioma <> '' ORDER BY idioma COLLATE ES")]
+        llenar(self.f_idioma, "Cualquier idioma", [(i, i) for i in usados])
+
+    def quitar_filtros(self):
+        for w in (self.f_tipo, self.f_etiqueta, self.f_estado, self.f_idioma, self.f_prestados, self.f_pendientes):
+            w.blockSignals(True)
+        for combo in (self.f_tipo, self.f_etiqueta, self.f_estado, self.f_idioma):
+            combo.setCurrentIndex(0)
+        self.f_prestados.setChecked(False)
+        self.f_pendientes.setChecked(False)
+        for w in (self.f_tipo, self.f_etiqueta, self.f_estado, self.f_idioma, self.f_prestados, self.f_pendientes):
+            w.blockSignals(False)
+        self.busqueda.clear()
+        self.refrescar_resultados()
+
     def _crear_acciones(self):
         self.acc_nuevo = QAction("➕ Nuevo", self, shortcut=QKeySequence.StandardKey.New)
         self.acc_nuevo.triggered.connect(lambda: self.nuevo())
@@ -98,6 +162,11 @@ class VentanaPrincipal(QMainWindow):
         self.acc_borrar.triggered.connect(self.borrar)
         self.acc_ubicaciones = QAction("🏠 Ubicaciones de la casa…", self)
         self.acc_ubicaciones.triggered.connect(self.editar_ubicaciones)
+        self.acc_tipos = QAction("🗂 Tipos de elemento y campos…", self)
+        self.acc_tipos.triggered.connect(self.editar_tipos)
+        self.acc_alta_masiva = QAction("⚡ Alta masiva…", self, shortcut=QKeySequence("Ctrl+Shift+N"))
+        self.acc_alta_masiva.setToolTip("Registrar muchos elementos seguidos en la misma balda o caja")
+        self.acc_alta_masiva.triggered.connect(self.alta_masiva)
         self.acc_buscar = QAction("Buscar", self, shortcut=QKeySequence.StandardKey.Find)
         self.acc_buscar.triggered.connect(lambda: (self.busqueda.setFocus(), self.busqueda.selectAll()))
         self.addAction(self.acc_buscar)
@@ -112,6 +181,7 @@ class VentanaPrincipal(QMainWindow):
         boton_nuevo.setMenu(self.menu_nuevo)
         self._llenar_menu_nuevo()
         barra.addWidget(boton_nuevo)
+        barra.addAction(self.acc_alta_masiva)
         barra.addAction(self.acc_editar)
         barra.addAction(self.acc_mover)
         barra.addAction(self.acc_borrar)
@@ -141,11 +211,12 @@ class VentanaPrincipal(QMainWindow):
         self.menu_archivo = archivo
 
         elemento = self.menuBar().addMenu("&Elemento")
-        for accion in (self.acc_nuevo, self.acc_editar, self.acc_mover, self.acc_borrar):
+        for accion in (self.acc_nuevo, self.acc_alta_masiva, self.acc_editar, self.acc_mover, self.acc_borrar):
             elemento.addAction(accion)
 
         self.menu_catalogo = self.menuBar().addMenu("&Catálogo")
         self.menu_catalogo.addAction(self.acc_ubicaciones)
+        self.menu_catalogo.addAction(self.acc_tipos)
 
         self.menu_ayuda = self.menuBar().addMenu("Ay&uda")
         acerca = self.menu_ayuda.addAction("Acerca de…")
@@ -156,7 +227,15 @@ class VentanaPrincipal(QMainWindow):
     # ------------------------------------------------------------ datos
 
     def filtros_actuales(self) -> Filtros:
-        f = Filtros(texto=self.busqueda.text())
+        f = Filtros(
+            texto=self.busqueda.text(),
+            tipo_id=self.f_tipo.currentData(),
+            etiqueta=self.f_etiqueta.currentData() or "",
+            estado=self.f_estado.currentData() or "",
+            idioma=self.f_idioma.currentData() or "",
+            solo_prestados=self.f_prestados.isChecked(),
+            solo_no_consumidos=self.f_pendientes.isChecked(),
+        )
         ubic = self.arbol.id_actual()
         if ubic == ID_SIN_UBICACION:
             f.sin_ubicacion = True
@@ -185,6 +264,7 @@ class VentanaPrincipal(QMainWindow):
         self.arbol.cargar()
         self.arbol.filtrar(self.filtro_arbol.text())
         self._llenar_menu_nuevo()
+        self._llenar_filtros()
         self.refrescar_resultados(seleccionar)
 
     def seleccionar_elemento(self, elemento_id: int) -> None:
@@ -233,7 +313,25 @@ class VentanaPrincipal(QMainWindow):
             return
         destino = elegir_ubicacion(self.con, self, titulo=f"Mover {len(ids)} elemento(s) a…")
         if destino is not None:
-            elementos.mover(self.con, ids, destino)
+            self.mover_a(ids, destino)
+
+    def mover_a(self, ids: list[int], destino: int | None):
+        """Mueve elementos (también se usa al arrastrarlos desde la tabla al árbol)."""
+        elementos.mover(self.con, ids, destino)
+        ruta = ubicaciones.ruta_texto(self.con, destino) if destino else "Sin ubicación"
+        self.refrescar_todo()
+        self.statusBar().showMessage(f"{len(ids)} elemento(s) movido(s) a {ruta}", 6000)
+
+    def alta_masiva(self):
+        dialogo = AltaMasiva(self.con, self.ubicacion_para_nuevo(), self.f_tipo.currentData(), self)
+        dialogo.exec()
+        if dialogo.creados:
+            self.refrescar_todo(dialogo.creados[-1])
+
+    def editar_tipos(self):
+        editor = EditorTipos(self.con, self)
+        editor.exec()
+        if editor.hubo_cambios:
             self.refrescar_todo()
 
     def borrar(self):
