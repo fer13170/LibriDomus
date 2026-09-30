@@ -1,11 +1,12 @@
 """Ventana principal: árbol de ubicaciones, buscador y lista de elementos."""
 
 import sqlite3
+from datetime import date
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QHBoxLayout, QHeaderView,
-                               QLabel, QLineEdit, QMainWindow, QMenu, QPushButton, QSplitter,
+                               QInputDialog, QLabel, QLineEdit, QMainWindow, QMenu, QPushButton, QSplitter,
                                QTableView, QToolButton, QVBoxLayout, QWidget)
 
 from .. import NOMBRE, VERSION
@@ -19,6 +20,7 @@ from .arbol_ubicaciones import ID_SIN_UBICACION, ID_TODAS, ArbolUbicaciones
 from .editor_ubicaciones import EditorUbicaciones
 from .ficha_elemento import FichaElemento
 from .modelo_resultados import ModeloResultados, OrdenadorResultados
+from .preferencias import Preferencias
 from .selector_ubicacion import elegir_ubicacion
 
 
@@ -167,6 +169,12 @@ class VentanaPrincipal(QMainWindow):
         self.acc_alta_masiva = QAction("⚡ Alta masiva…", self, shortcut=QKeySequence("Ctrl+Shift+N"))
         self.acc_alta_masiva.setToolTip("Registrar muchos elementos seguidos en la misma balda o caja")
         self.acc_alta_masiva.triggered.connect(self.alta_masiva)
+        self.acc_prestar = QAction("🤝 Prestar a…", self)
+        self.acc_prestar.triggered.connect(self.prestar)
+        self.acc_devolver = QAction("↩ Marcar como devuelto", self)
+        self.acc_devolver.triggered.connect(self.devolver)
+        self.acc_preferencias = QAction("Preferencias…", self)
+        self.acc_preferencias.triggered.connect(lambda: Preferencias(self).exec())
         self.acc_buscar = QAction("Buscar", self, shortcut=QKeySequence.StandardKey.Find)
         self.acc_buscar.triggered.connect(lambda: (self.busqueda.setFocus(), self.busqueda.selectAll()))
         self.addAction(self.acc_buscar)
@@ -206,6 +214,8 @@ class VentanaPrincipal(QMainWindow):
 
     def _crear_menus(self):
         archivo = self.menuBar().addMenu("&Archivo")
+        archivo.addAction(self.acc_preferencias)
+        archivo.addSeparator()
         salir = archivo.addAction("Salir")
         salir.triggered.connect(self.close)
         self.menu_archivo = archivo
@@ -213,6 +223,9 @@ class VentanaPrincipal(QMainWindow):
         elemento = self.menuBar().addMenu("&Elemento")
         for accion in (self.acc_nuevo, self.acc_alta_masiva, self.acc_editar, self.acc_mover, self.acc_borrar):
             elemento.addAction(accion)
+        elemento.addSeparator()
+        elemento.addAction(self.acc_prestar)
+        elemento.addAction(self.acc_devolver)
 
         self.menu_catalogo = self.menuBar().addMenu("&Catálogo")
         self.menu_catalogo.addAction(self.acc_ubicaciones)
@@ -282,8 +295,8 @@ class VentanaPrincipal(QMainWindow):
     def _actualizar_acciones(self):
         n = len(self.ids_seleccionados())
         self.acc_editar.setEnabled(n == 1)
-        self.acc_mover.setEnabled(n >= 1)
-        self.acc_borrar.setEnabled(n >= 1)
+        for accion in (self.acc_mover, self.acc_borrar, self.acc_prestar, self.acc_devolver):
+            accion.setEnabled(n >= 1)
 
     # ------------------------------------------------------------ acciones
 
@@ -321,6 +334,24 @@ class VentanaPrincipal(QMainWindow):
         ruta = ubicaciones.ruta_texto(self.con, destino) if destino else "Sin ubicación"
         self.refrescar_todo()
         self.statusBar().showMessage(f"{len(ids)} elemento(s) movido(s) a {ruta}", 6000)
+
+    def prestar(self):
+        ids = self.ids_seleccionados()
+        if not ids:
+            return
+        a_quien, ok = QInputDialog.getItem(
+            self, "Prestar", f"¿A quién prestas {len(ids)} elemento(s)?",
+            ["", *elementos.nombres_prestatarios(self.con)], 0, True)
+        if not ok or not a_quien.strip():
+            return
+        elementos.prestar(self.con, ids, a_quien, date.today().isoformat())
+        self.refrescar_todo(ids[0])
+
+    def devolver(self):
+        ids = self.ids_seleccionados()
+        if ids:
+            elementos.devolver(self.con, ids)
+            self.refrescar_todo(ids[0])
 
     def alta_masiva(self):
         dialogo = AltaMasiva(self.con, self.ubicacion_para_nuevo(), self.f_tipo.currentData(), self)
@@ -369,6 +400,6 @@ class VentanaPrincipal(QMainWindow):
         if not self.ids_seleccionados():
             return
         menu = QMenu(self)
-        for accion in (self.acc_editar, self.acc_mover, self.acc_borrar):
+        for accion in (self.acc_editar, self.acc_mover, self.acc_prestar, self.acc_devolver, self.acc_borrar):
             menu.addAction(accion)
         menu.exec(self.tabla.viewport().mapToGlobal(posicion))

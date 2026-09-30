@@ -1,8 +1,11 @@
 """Modelo de la tabla de resultados de la ventana principal."""
 
-from PySide6.QtCore import QAbstractTableModel, QMimeData, QModelIndex, QSortFilterProxyModel, Qt
+import html
+
+from PySide6.QtCore import QAbstractTableModel, QMimeData, QModelIndex, QSortFilterProxyModel, Qt, QUrl
 
 from .. import texto
+from ..servicios import portadas
 from ..servicios.busqueda import Resultado
 
 MIME_ELEMENTOS = "application/x-bibliotecario-elementos"
@@ -68,6 +71,10 @@ class ModeloResultados(QAbstractTableModel):
             return texto.clave_orden(self.data(indice, Qt.ItemDataRole.DisplayRole))
         if rol == Qt.ItemDataRole.ToolTipRole and col == 4:
             return r.ubicacion
+        if rol == Qt.ItemDataRole.ToolTipRole and col == 1 and r.portada:
+            ruta = portadas.ruta(r.portada)
+            if ruta:  # al pasar el ratón por el título se ve la portada
+                return f'<img src="{QUrl.fromLocalFile(str(ruta)).toString()}" width="160"><br>{html.escape(r.titulo)}'
         if rol == Qt.ItemDataRole.ForegroundRole and col == 4 and not r.ubicacion:
             return Qt.GlobalColor.gray
         return None

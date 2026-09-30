@@ -184,6 +184,36 @@ def mover(con: sqlite3.Connection, ids: list[int], ubicacion_id: int | None) -> 
             busqueda.reindexar(con, id_)
 
 
+def prestar(con: sqlite3.Connection, ids: list[int], a_quien: str, fecha: str) -> None:
+    from ..servicios import busqueda
+
+    a_quien = a_quien.strip()
+    if not a_quien:
+        raise ErrorElemento("Indica a quién se presta.")
+    if not fecha_valida(fecha):
+        raise ErrorElemento("La fecha del préstamo no es válida (AAAA-MM-DD).")
+    with transaccion(con):
+        for id_ in ids:
+            con.execute("UPDATE elemento SET prestado_a = ?, fecha_prestamo = ?,"
+                        " modificado = datetime('now', 'localtime') WHERE id = ?", (a_quien, fecha, id_))
+            busqueda.reindexar(con, id_)
+
+
+def devolver(con: sqlite3.Connection, ids: list[int]) -> None:
+    from ..servicios import busqueda
+
+    with transaccion(con):
+        for id_ in ids:
+            con.execute("UPDATE elemento SET prestado_a = '', fecha_prestamo = '',"
+                        " modificado = datetime('now', 'localtime') WHERE id = ?", (id_,))
+            busqueda.reindexar(con, id_)
+
+
+def nombres_prestatarios(con: sqlite3.Connection) -> list[str]:
+    return [f[0] for f in con.execute(
+        "SELECT DISTINCT prestado_a FROM elemento WHERE prestado_a <> '' ORDER BY prestado_a COLLATE ES")]
+
+
 def nombres_personas(con: sqlite3.Connection) -> list[str]:
     return [f[0] for f in con.execute("SELECT nombre FROM persona ORDER BY nombre COLLATE ES")]
 

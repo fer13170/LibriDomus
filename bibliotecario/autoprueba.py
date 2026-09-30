@@ -33,6 +33,8 @@ def ejecutar() -> int:
     paso("Qt", _probar_qt)
     paso("QR (segno)", _probar_qr)
     paso("Ventanas", _probar_ventanas)
+    paso("Portadas JPEG", _probar_jpeg)
+    paso("HTTPS (SSL)", _probar_ssl)
 
     lineas.append("RESULTADO: " + ("CORRECTO" if ok else "CON ERRORES"))
     texto = "\n".join(lineas)
@@ -108,6 +110,27 @@ def _probar_ventanas():
 
     traducido = QCoreApplication.translate("QPlatformTheme", "Close")
     return f"{len(ventanas)} ventanas; 'Close' -> '{traducido}'"
+
+
+def _probar_jpeg():
+    from PySide6.QtGui import QColor, QImage
+    from PySide6.QtWidgets import QApplication
+
+    QApplication.instance() or QApplication(["autoprueba"])
+    imagen = QImage(40, 60, QImage.Format.Format_RGB32)
+    imagen.fill(QColor("red"))
+    with tempfile.TemporaryDirectory() as carpeta:
+        ruta = Path(carpeta) / "prueba.jpg"
+        assert imagen.save(str(ruta), "JPG", 85), "Qt no puede guardar JPEG (falta el plugin qjpeg)"
+        assert not QImage(str(ruta)).isNull(), "Qt no puede leer JPEG"
+    return "guardar y leer JPEG correcto"
+
+
+def _probar_ssl():
+    import ssl
+
+    contexto = ssl.create_default_context()
+    return f"{ssl.OPENSSL_VERSION}; {len(contexto.get_ca_certs()) or 'certificados del sistema'}"
 
 
 def _probar_qr():

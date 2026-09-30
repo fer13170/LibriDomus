@@ -1,6 +1,7 @@
 """Ficha de un elemento: alta y edición. El formulario se adapta al tipo elegido."""
 
 import sqlite3
+from datetime import date
 
 from PySide6.QtCore import QRegularExpression, Qt, Signal
 from PySide6.QtGui import QRegularExpressionValidator
@@ -11,7 +12,10 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QDialog, QFormL
 from ..datos import elementos, tipos
 from ..datos.elementos import Elemento, ErrorElemento
 from ..datos.tipos import Campo, TipoElemento
-from . import comun
+from ..servicios import portadas
+from ..servicios.isbn import DatosLibro
+from . import autocompletar, comun
+from .panel_portada import PanelPortada
 from .selector_ubicacion import CampoUbicacion
 
 VALIDADOR_NUMERO = QRegularExpression(r"^-?\d+([.,]\d+)?$")
@@ -179,7 +183,14 @@ class FichaElemento(QDialog):
         fila.addWidget(QLabel("  Idioma"))
         fila.addWidget(self.idioma, 1)
         general.addRow("Año", fila)
-        general.addRow("Identificador", self.identificador)
+        self.boton_autocompletar = QPushButton("🔎 Autocompletar")
+        self.boton_autocompletar.setAutoDefault(False)
+        self.boton_autocompletar.setToolTip("Busca título, autores, editorial, año y portada por el ISBN "
+                                            "(necesita Internet)")
+        fila = QHBoxLayout()
+        fila.addWidget(self.identificador, 1)
+        fila.addWidget(self.boton_autocompletar)
+        general.addRow("Identificador", fila)
         fila = QHBoxLayout()
         fila.addWidget(self.estado, 1)
         fila.addWidget(QLabel("  Valoración"))
@@ -187,13 +198,33 @@ class FichaElemento(QDialog):
         fila.addWidget(self.consumido)
         general.addRow("Conservación", fila)
         general.addRow("Etiquetas", self.etiquetas)
+        self.portada = PanelPortada()
+        caja_general = QHBoxLayout()
+        caja_general.addLayout(general, 1)
+        caja_general.addWidget(self.portada)
         self.grupo_general = QGroupBox("General")
-        self.grupo_general.setLayout(general)
+        self.grupo_general.setLayout(caja_general)
 
         ubic = QVBoxLayout()
         ubic.addWidget(self.ubicacion)
         self.grupo_ubicacion = QGroupBox("Ubicación")
         self.grupo_ubicacion.setLayout(ubic)
+
+        # --- préstamo
+        self.prestado_a = QLineEdit(placeholderText="¿A quién se lo has prestado?")
+        self.prestado_a.setCompleter(completador(elementos.nombres_prestatarios(con), self.prestado_a))
+        self.fecha_prestamo = QLineEdit(placeholderText=AYUDA_FECHA)
+        self.fecha_prestamo.setValidator(QRegularExpressionValidator(VALIDADOR_FECHA, self.fecha_prestamo))
+        self.fecha_prestamo.setMaximumWidth(130)
+        self.boton_devuelto = QPushButton("Devuelto")
+        self.boton_devuelto.setAutoDefault(False)
+        fila = QHBoxLayout()
+        fila.addWidget(self.prestado_a, 1)
+        fila.addWidget(QLabel("  Fecha"))
+        fila.addWidget(self.fecha_prestamo)
+        fila.addWidget(self.boton_devuelto)
+        self.grupo_prestamo = QGroupBox("Préstamo")
+        self.grupo_prestamo.setLayout(fila)
 
         # --- personal
         self.fecha_desde = QLineEdit(placeholderText=AYUDA_FECHA)
@@ -254,6 +285,8 @@ class FichaElemento(QDialog):
         self.boton_guardar_nuevo.clicked.connect(self._guardar_y_nuevo)
         self.boton_cancelar.clicked.connect(self.reject)
         self.tipo.currentIndexChanged.connect(lambda _i: self._aplicar_tipo())
+        self.boton_autocompletar.clicked.connect(self.autocompletar)
+        self.boton_devuelto.clicked.connect(lambda: (self.prestado_a.clear(), self.fecha_prestamo.clear()))
 
         self._cargar(tipo_id, ubicacion_id)
 
@@ -283,7 +316,7 @@ class FichaElemento(QDialog):
         # Los tipos personales (álbumes, carpetas...) muestran primero el periodo y el lugar.
         orden = [self.grupo_general]
         orden += [self.grupo_personal, self.grupo_campos] if t.personal else [self.grupo_campos, self.grupo_personal]
-        orden += [self.grupo_ubicacion, self.grupo_notas]
+        orden += [self.grupo_ubicacion, self.grupo_prestamo, self.grupo_notas]
         for grupo in orden:
             self.contenido.removeWidget(grupo)
         for grupo in orden:
@@ -319,12 +352,19 @@ class FichaElemento(QDialog):
         self.fecha_hasta.setText(e.fecha_hasta)
         self.lugar_evento.setText(e.lugar_evento)
         self.notas.setPlainText(e.notas)
+        self.portada.establecer(e.portada)
+        self.prestado_a.setText(e.prestado_a)
+        self.fecha_prestamo.setText(e.fecha_prestamo)
         for campo_id, editor in self.editores.items():
             editor.establecer(e.valores.get(campo_id, ""))
 
     def leer(self) -> Elemento:
-        """Construye un Elemento con lo que hay en pantalla (conservando lo que la ficha no muestra)."""
+        """Construye un Elemento con lo que hay en pantalla."""
         base = self.original
+        prestado_a = self.prestado_a.text().strip()
+        fecha_prestamo = self.fecha_prestamo.text().strip()
+        if prestado_a and not fecha_prestamo:
+            fecha_prestamo = date.today().isoformat()  # si no se indica, se presta hoy
         e = Elemento(
             id=base.id if base else None,
             tipo_id=self.tipo.currentData(),
@@ -344,10 +384,47 @@ class FichaElemento(QDialog):
             personas=self.personas.valor(),
             etiquetas=[x for x in self.etiquetas.text().split(",")],
             valores={campo_id: ed.valor() for campo_id, ed in self.editores.items()},
+            portada=self.portada.nombre,
+            prestado_a=prestado_a,
+            fecha_prestamo=fecha_prestamo if prestado_a else "",
         )
-        if base:
-            e.portada, e.prestado_a, e.fecha_prestamo = base.portada, base.prestado_a, base.fecha_prestamo
         return e
+
+    # ------------------------------------------------------------ autocompletar por ISBN
+
+    def autocompletar(self) -> None:
+        def acabar():
+            self.boton_autocompletar.setEnabled(True)
+            self.boton_autocompletar.setText("🔎 Autocompletar")
+
+        # Se desactiva antes de lanzar: la respuesta podría llegar antes de que 'consultar' vuelva.
+        self.boton_autocompletar.setEnabled(False)
+        self.boton_autocompletar.setText("Buscando…")
+        if not autocompletar.consultar(self, self.identificador.text(), self.aplicar_datos_isbn, acabar):
+            acabar()
+
+    def aplicar_datos_isbn(self, datos: DatosLibro) -> None:
+        """Rellena solo lo que está vacío: nunca pisa lo que ya ha escrito el usuario."""
+        def rellenar(campo: QLineEdit, valor: str):
+            if valor and not campo.text().strip():
+                campo.setText(valor)
+
+        rellenar(self.titulo, datos.titulo)
+        rellenar(self.subtitulo, datos.subtitulo)
+        if datos.autores and not self.personas.valor():
+            rol = self.tipo_actual().roles[0] if self.tipo_actual().roles else ""
+            self.personas.establecer([(a, rol) for a in datos.autores])
+        if datos.anio and not self.anio.value():
+            self.anio.setValue(datos.anio)
+        if datos.idioma and not self.idioma.currentText().strip():
+            self.idioma.setCurrentText(datos.idioma)
+        for editor in self.editores.values():
+            valor = {"editorial": datos.editorial, "paginas": str(datos.paginas or "")}.get(editor.campo.clave, "")
+            if valor and not editor.valor():
+                editor.establecer(valor)
+        if datos.portada and not self.portada.nombre:
+            self.portada.poner_bytes(datos.portada)
+        self.identificador.setText(datos.isbn)
 
     # ------------------------------------------------------------ guardar
 
@@ -360,14 +437,25 @@ class FichaElemento(QDialog):
             if not comun.confirmar(self, f"Ya hay un elemento con el identificador {identificador}:\n"
                                          f"«{otro.titulo}».\n\n¿Guardar igualmente?"):
                 return False
+        portada_anterior = self.original.portada if self.original else ""
         try:
             id_ = elementos.guardar(self.con, e)
         except ErrorElemento as error:
             comun.error(self, str(error))
             return False
+        # Imágenes que ya no se usan: la anterior (si se cambió) y las probadas y descartadas.
+        if portada_anterior and portada_anterior != e.portada:
+            portadas.borrar(portada_anterior)
+        self.portada.descartar_nuevas(conservar=e.portada)
         self.original = elementos.obtener(self.con, id_)
         self.guardado.emit(id_)
         return True
+
+    def reject(self) -> None:
+        """Al cancelar, se borran las imágenes elegidas en esta ficha que no se han guardado."""
+        conservar = self.original.portada if self.original else ""
+        self.portada.descartar_nuevas(conservar=conservar)
+        super().reject()
 
     def _guardar_y_nuevo(self) -> None:
         if not self.guardar():
@@ -376,9 +464,10 @@ class FichaElemento(QDialog):
         tipo_id, ubicacion_id = self.tipo.currentData(), self.ubicacion.valor()
         self.original = None
         for w in (self.titulo, self.subtitulo, self.identificador, self.etiquetas,
-                  self.fecha_desde, self.fecha_hasta, self.lugar_evento):
+                  self.fecha_desde, self.fecha_hasta, self.lugar_evento, self.prestado_a, self.fecha_prestamo):
             w.clear()
         self.notas.clear()
+        self.portada.establecer("")
         self.anio.setValue(0)
         self.estado.setCurrentIndex(0)
         self.valoracion.setCurrentIndex(0)

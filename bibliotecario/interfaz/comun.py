@@ -1,8 +1,10 @@
 """Utilidades de interfaz compartidas por todas las ventanas."""
 
+from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
+from PySide6.QtCore import (QLibraryInfo, QLocale, QObject, QRunnable, QThreadPool, QTranslator,
+                            Signal, Slot)
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox, QWidget
 
@@ -32,6 +34,59 @@ def preparar_aplicacion(app: QApplication) -> None:
     if traductor.load(QLocale("es_ES"), "qtbase", "_", QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)):
         app.installTranslator(traductor)
     QLocale.setDefault(QLocale("es_ES"))
+
+
+class _Senales(QObject):
+    """Vive en el hilo de la interfaz: al conectar las señales a sus métodos, Qt entrega
+    los resultados del hilo de trabajo en el hilo de la interfaz (conexión en cola)."""
+
+    terminado = Signal(object)
+    fallido = Signal(object)
+
+    def __init__(self, al_terminar, al_fallar):
+        super().__init__()
+        self.al_terminar, self.al_fallar = al_terminar, al_fallar
+        self.terminado.connect(self._ok)
+        self.fallido.connect(self._ko)
+
+    @Slot(object)
+    def _ok(self, valor):
+        _tareas_vivas.discard(self)
+        self.al_terminar(valor)
+
+    @Slot(object)
+    def _ko(self, error):
+        _tareas_vivas.discard(self)
+        self.al_fallar(error)
+
+
+class _Tarea(QRunnable):
+    def __init__(self, funcion, senales):
+        super().__init__()
+        self.funcion, self.senales = funcion, senales
+
+    def run(self):
+        try:
+            resultado = self.funcion()
+        except Exception as error:  # noqa: BLE001 - el error se entrega a la interfaz
+            self.senales.fallido.emit(error)
+        else:
+            self.senales.terminado.emit(resultado)
+
+
+_tareas_vivas: set = set()
+
+
+def en_segundo_plano(funcion: Callable[[], object], al_terminar: Callable[[object], None],
+                     al_fallar: Callable[[Exception], None]) -> None:
+    """Ejecuta ``funcion`` en otro hilo (p. ej. una consulta a Internet) sin congelar la ventana.
+
+    ``al_terminar`` y ``al_fallar`` se llaman después en el hilo de la interfaz.
+    Las pruebas sustituyen esta función por una versión que lo hace todo en el acto.
+    """
+    senales = _Senales(al_terminar, al_fallar)
+    _tareas_vivas.add(senales)  # evita que Python lo destruya antes de recibir la respuesta
+    QThreadPool.globalInstance().start(_Tarea(funcion, senales))
 
 
 def icono_app() -> QIcon:

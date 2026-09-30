@@ -28,7 +28,10 @@ def ejecutar(argv: list[str]) -> int:
         QMessageBox.critical(None, NOMBRE, str(error))
         return 1
 
+    from ..servicios import portadas
     from .ventana_principal import VentanaPrincipal
+
+    portadas.limpiar_huerfanas(con)  # imágenes que quedaron sin uso (p. ej. por un cierre inesperado)
 
     ventana = VentanaPrincipal(con)
     ventana.show()

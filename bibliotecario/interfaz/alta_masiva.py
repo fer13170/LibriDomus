@@ -12,7 +12,10 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFormLayout, QGrou
 
 from ..datos import elementos, tipos
 from ..datos.elementos import Elemento, ErrorElemento
-from . import comun
+from ..servicios import configuracion, isbn, portadas
+from ..servicios.isbn import DatosLibro
+from ..servicios.portadas import ErrorPortada
+from . import autocompletar, comun
 from .ficha_elemento import completador
 from .selector_ubicacion import CampoUbicacion
 
@@ -61,9 +64,11 @@ class AltaMasiva(QDialog):
         self.estado = QComboBox()
         self.estado.addItems(["", *elementos.ESTADOS])
         self.etiqueta_personas = QLabel()
+        self.estado_consulta = QLabel()
+        self.estado_consulta.setWordWrap(True)
+        self.datos_isbn: DatosLibro | None = None
         variables = QFormLayout()
-        self.fila_identificador = ("Identificador:", self.identificador)
-        variables.addRow(*self.fila_identificador)
+        variables.addRow("Identificador:", self.identificador)
         variables.addRow("Título *:", self.titulo)
         variables.addRow(self.etiqueta_personas, self.personas)
         variables.addRow("Año:", self.anio)
@@ -73,6 +78,7 @@ class AltaMasiva(QDialog):
         self.boton_guardar = QPushButton("Guardar y siguiente  (Intro)")
         self.boton_guardar.setDefault(True)
         variables.addRow("", self.boton_guardar)
+        variables.addRow("", self.estado_consulta)
         grupo_variables = QGroupBox("Elemento")
         grupo_variables.setLayout(variables)
 
@@ -107,8 +113,9 @@ class AltaMasiva(QDialog):
         cerrar.clicked.connect(self.accept)
         self.tipo.currentIndexChanged.connect(lambda _i: self._aplicar_tipo(cambiar_codigo=True))
         self.usar_codigo.toggled.connect(lambda _v: self._aplicar_tipo(cambiar_codigo=False))
-        # Intro en el identificador pasa al título (en la fase 3 además autocompleta).
+        # Intro en el identificador consulta el ISBN y pasa al título.
         self.identificador.returnPressed.connect(self.al_intro_identificador)
+        self.identificador.textEdited.connect(lambda _t: setattr(self, "datos_isbn", None))
         for w in (self.titulo, self.personas, self.etiquetas):
             w.returnPressed.connect(self.guardar_y_siguiente)
         self._aplicar_tipo(cambiar_codigo=True)
@@ -131,7 +138,37 @@ class AltaMasiva(QDialog):
         return self.identificador if self.usar_codigo.isChecked() else self.titulo
 
     def al_intro_identificador(self) -> None:
-        self.titulo.setFocus()
+        """Intro en el ISBN: si es válido se consulta por Internet; si no, se pasa al título."""
+        texto_isbn = self.identificador.text().strip()
+        if not texto_isbn or isbn.validar(texto_isbn) is None or not configuracion.obtener("consultar_isbn"):
+            self.titulo.setFocus()
+            return
+        self.estado_consulta.setText("Buscando datos del ISBN…")
+
+        def acabar():
+            self.estado_consulta.setText("")
+            self.titulo.setFocus()
+
+        autocompletar.consultar(self, texto_isbn, self.aplicar_datos_isbn, acabar)
+
+    def aplicar_datos_isbn(self, datos: DatosLibro) -> None:
+        self.datos_isbn = datos
+        if not self.titulo.text().strip():
+            self.titulo.setText(datos.titulo + (f": {datos.subtitulo}" if datos.subtitulo else ""))
+        if datos.autores and not self.personas.text().strip():
+            self.personas.setText("; ".join(datos.autores))
+        if datos.anio and not self.anio.value():
+            self.anio.setValue(datos.anio)
+        extra = [datos.editorial, str(datos.anio or ""), "con portada" if datos.portada else "sin portada"]
+        self.estado_consulta.setText(f"Encontrado en {datos.fuente}: " + " · ".join(x for x in extra if x))
+
+    def _valores_extra(self, tipo_id: int) -> dict[int, str]:
+        """Editorial y páginas obtenidas por ISBN, si el tipo tiene esos campos."""
+        if not self.datos_isbn:
+            return {}
+        disponibles = {"editorial": self.datos_isbn.editorial, "paginas": str(self.datos_isbn.paginas or "")}
+        return {c.id: disponibles[c.clave] for c in tipos.campos(self.con, tipo_id)
+                if c.clave in disponibles and disponibles[c.clave]}
 
     def guardar_y_siguiente(self) -> bool:
         if self.ubicacion.valor() is None and not self.sin_ubicacion_aceptado:
@@ -149,14 +186,22 @@ class AltaMasiva(QDialog):
             etiquetas=self.etiquetas.text().split(","),
             estado=self.estado.currentText(),
             ubicacion_id=self.ubicacion.valor(),
+            valores=self._valores_extra(t.id),
+            idioma=self.datos_isbn.idioma if self.datos_isbn else "",
         )
         repetidos = elementos.buscar_por_identificador(self.con, e.identificador)
         if repetidos and not comun.confirmar(
                 self, f"Ya hay {len(repetidos)} elemento(s) con el identificador {e.identificador}. ¿Añadir otro?"):
             return False
+        if self.datos_isbn and self.datos_isbn.portada:
+            try:
+                e.portada = portadas.guardar_desde_bytes(self.datos_isbn.portada)
+            except ErrorPortada:
+                e.portada = ""  # una portada defectuosa no impide el alta
         try:
             id_ = elementos.guardar(self.con, e)
         except ErrorElemento as error:
+            portadas.borrar(e.portada)
             comun.error(self, str(error))
             self.titulo.setFocus()
             return False
@@ -166,6 +211,8 @@ class AltaMasiva(QDialog):
         for w in (self.identificador, self.titulo, self.personas):
             w.clear()
         self.anio.setValue(0)
+        self.datos_isbn = None
+        self.estado_consulta.setText("")
         self.primer_campo().setFocus()
         return True
 
