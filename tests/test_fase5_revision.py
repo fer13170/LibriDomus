@@ -8,15 +8,15 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication
 
-from bibliotecario import rutas
-from bibliotecario.datos import conexion, elementos, tipos
-from bibliotecario.datos.elementos import Elemento
-from bibliotecario.interfaz import comun, ventana_principal
-from bibliotecario.interfaz.alta_masiva import AltaMasiva
-from bibliotecario.interfaz.ficha_elemento import FichaElemento
-from bibliotecario.interfaz.ventana_principal import VentanaPrincipal
-from bibliotecario.servicios import busqueda, copias, isbn, portadas
-from bibliotecario.servicios.busqueda import Filtros
+from libridomus import rutas
+from libridomus.datos import conexion, elementos, tipos
+from libridomus.datos.elementos import Elemento
+from libridomus.interfaz import comun, ventana_principal
+from libridomus.interfaz.alta_masiva import AltaMasiva
+from libridomus.interfaz.ficha_elemento import FichaElemento
+from libridomus.interfaz.ventana_principal import VentanaPrincipal
+from libridomus.servicios import busqueda, copias, isbn, portadas
+from libridomus.servicios.busqueda import Filtros
 
 
 @pytest.fixture(scope="session")
@@ -69,7 +69,7 @@ def test_cambiar_de_tipo_no_arrastra_valores_del_tipo_anterior(app, con, mensaje
 @pytest.fixture
 def datos_con_simbolos(tmp_path, monkeypatch):
     carpeta = tmp_path / "Libros#2 al 100%" / "datos"
-    monkeypatch.setenv("BV_DATOS", str(carpeta))
+    monkeypatch.setenv("LIBRIDOMUS_DATOS", str(carpeta))
     con = conexion.abrir()
     yield con
     con.close()

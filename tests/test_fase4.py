@@ -8,13 +8,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication
 
-from bibliotecario import rutas
-from bibliotecario.datos import conexion, elementos, tipos, ubicaciones
-from bibliotecario.datos.elementos import Elemento
-from bibliotecario.interfaz import comun, ventana_principal
-from bibliotecario.interfaz.dialogo_etiquetas import DialogoEtiquetas
-from bibliotecario.interfaz.ventana_principal import VentanaPrincipal
-from bibliotecario.servicios import copias, etiquetas, informes, portadas
+from libridomus import rutas
+from libridomus.datos import conexion, elementos, tipos, ubicaciones
+from libridomus.datos.elementos import Elemento
+from libridomus.interfaz import comun, ventana_principal
+from libridomus.interfaz.dialogo_etiquetas import DialogoEtiquetas
+from libridomus.interfaz.ventana_principal import VentanaPrincipal
+from libridomus.servicios import copias, etiquetas, informes, portadas
 
 
 @pytest.fixture(scope="session")
@@ -189,8 +189,8 @@ def test_restaurar_desde_la_ventana_reinicia(app, con, casa, mensajes, monkeypat
 
 
 def test_copia_al_salir_respeta_preferencias(app, con, casa):
-    from bibliotecario.interfaz.aplicacion import copia_al_salir
-    from bibliotecario.servicios import configuracion
+    from libridomus.interfaz.aplicacion import copia_al_salir
+    from libridomus.servicios import configuracion
     configuracion.guardar({**configuracion.cargar(), "copia_al_cerrar": False})
     copia_al_salir(con)
     assert not list(rutas.carpeta_copias().glob("auto_*.db"))

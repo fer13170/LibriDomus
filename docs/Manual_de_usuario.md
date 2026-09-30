@@ -1,6 +1,6 @@
-# Bibliotecario Virtual — Manual de usuario
+# LibriDomus — Manual de usuario
 
-Bibliotecario Virtual registra **dónde guardas** cada libro, revista, disco, película, videojuego, partitura, álbum de fotos, caja de diapositivas, carpeta o documento de tu casa, y te permite **encontrarlo** en segundos.
+LibriDomus registra **dónde guardas** cada libro, revista, disco, película, videojuego, partitura, álbum de fotos, caja de diapositivas, carpeta o documento de tu casa, y te permite **encontrarlo** en segundos.
 
 Funciona **sin Internet**. Solo usa la conexión, si la hay, para el botón *Autocompletar* por ISBN.
 
@@ -8,9 +8,11 @@ Funciona **sin Internet**. Solo usa la conexión, si la hay, para el botón *Aut
 
 ## 1. Instalación
 
-1. Descomprime el archivo `BibliotecarioVirtual-X.Y.Z.zip` en una carpeta **donde puedas escribir**: Documentos, el Escritorio o un USB. **No** lo pongas en `C:\Archivos de programa`.
-2. Entra en la carpeta `BibliotecarioVirtual` y abre **`BibliotecarioVirtual.exe`**.
+1. Descomprime el archivo `LibriDomus-X.Y.Z.zip` en una carpeta **donde puedas escribir**: Documentos, el Escritorio o un USB. **No** lo pongas en `C:\Archivos de programa`.
+2. Entra en la carpeta `LibriDomus` y abre **`LibriDomus.exe`**.
 3. Si quieres, crea un acceso directo: clic derecho en el `.exe` › *Enviar a* › *Escritorio*.
+
+**No hace falta instalar nada más**: ni Python ni otros programas. Todo lo necesario (incluidas las librerías de Microsoft Visual C++) va dentro de la carpeta.
 
 Todos tus datos se guardan en la subcarpeta **`datos`**, junto al programa:
 
@@ -21,7 +23,7 @@ Todos tus datos se guardan en la subcarpeta **`datos`**, junto al programa:
 | `datos\copias\` | Copias de seguridad automáticas |
 | `datos\config.json` | Tus preferencias |
 
-> Para llevarte el programa a otro ordenador, copia la carpeta `BibliotecarioVirtual` completa.
+> Para llevarte el programa a otro ordenador, copia la carpeta `LibriDomus` completa.
 
 La primera vez, Windows puede mostrar el aviso *«Windows protegió su PC»*, porque el programa no está firmado digitalmente. Pulsa *Más información* › *Ejecutar de todas formas*.
 
@@ -29,9 +31,17 @@ La primera vez, Windows puede mostrar el aviso *«Windows protegió su PC»*, po
 
 ## 2. La ventana principal
 
-- **Izquierda: el árbol de ubicaciones.** La casa, sus plantas, las habitaciones, los muebles… Entre paréntesis aparece cuántos elementos hay dentro, contando lo que hay en todas sus sububicaciones. Al pulsar una ubicación, la lista de la derecha muestra todo lo que contiene. Arriba están *Todas las ubicaciones* y, si hay elementos sin ubicar, abajo aparece *Sin ubicación*.
-- **Derecha: la lista de elementos.** Pulsa una cabecera de columna para ordenar por ella. Haz doble clic en un elemento para abrir su ficha. Al pasar el ratón por el título se ve la portada.
-- **Arriba: la barra de herramientas.** *Nuevo*, *Alta masiva*, *Editar*, *Mover a*, *Borrar*, el **buscador**, *Ir a código*, *Ubicaciones de la casa* y *Etiquetas*.
+La ventana tiene tres zonas:
+
+- **Izquierda: ubicaciones.** La casa, sus plantas, las habitaciones, los muebles… A la derecha de cada nombre aparece cuántos elementos contiene, contando todo lo que hay dentro. Al pulsar una ubicación, la lista central muestra su contenido.
+  - Arriba está *Toda la colección*; si hay elementos sin ubicar, al final aparece *Sin ubicación*.
+  - Con **clic derecho** en una ubicación puedes añadir un elemento o una sububicación, editarla, **subirla o bajarla**, imprimir su etiqueta o sacar su inventario.
+- **Centro: la lista.** Pulsa una cabecera para ordenar por esa columna. Con clic derecho en la cabecera eliges qué columnas ver (se recuerda). Doble clic en un elemento para abrir su ficha.
+- **Derecha: el panel de detalle.** Muestra la ficha del elemento seleccionado: portada, personas, dónde está (pulsa la ruta para ir a esa ubicación), sus datos y botones para editar, mover, prestar o borrar. Se muestra u oculta con **F9**.
+
+**Arriba**, la barra con el **buscador**, *Nuevo* (la flecha permite elegir el tipo), *Alta masiva*, *Casa* (editar ubicaciones), *Etiquetas*, *Informes*, *Ir a código*, el panel de detalle y las *Preferencias*.
+
+Cuando la colección está vacía aparece una pantalla de bienvenida con botones para empezar.
 
 ### Atajos de teclado
 
@@ -44,30 +54,45 @@ La primera vez, Windows puede mostrar el aviso *«Windows protegió su PC»*, po
 | Supr | Borrar los elementos seleccionados |
 | Ctrl+F | Ir al buscador |
 | Ctrl+E | Imprimir etiquetas |
+| Ctrl + / Ctrl − / Ctrl+0 | Aumentar, reducir o restablecer el tamaño de la interfaz |
+| F9 | Mostrar u ocultar el panel de detalle |
+| F1 | Este manual |
 
 ---
 
-## 3. Primer paso: describir tu casa
+## 3. Apariencia: tema, tamaño y letra
 
-Menú **Catálogo › Ubicaciones de la casa…**
+En **Ver** o en **Preferencias › Apariencia** puedes elegir:
 
-La casa ya viene con sus plantas: **Sótano, Planta baja, Planta alta y Buhardilla**. Puedes renombrarlas, borrarlas o añadir otras.
+- **Tema**: *Claro*, *Oscuro* o *Según Windows* (sigue el modo claro u oscuro del sistema).
+- **Tamaño de la interfaz**: *Pequeño*, *Normal*, *Grande*, *Muy grande* o *Enorme*. Cambia a la vez el tamaño de la letra, los iconos y las filas. También con **Ctrl +** y **Ctrl −**.
+- **Tipo de letra** de toda la aplicación.
+
+Los cambios se ven al momento y se recuerdan la próxima vez. También se recuerdan el tamaño y la posición de la ventana, las columnas visibles y si el panel de detalle está abierto.
+
+---
+
+## 4. Primer paso: describir tu casa
+
+Botón **Casa** de la barra (o *Catálogo › Ubicaciones de la casa…*).
+
+La casa ya viene con sus plantas: **Sótano, Planta baja, Planta alta y Buhardilla**. Puedes renombrarlas, borrarlas, añadir otras y **ordenarlas como quieras**.
 
 - **Añadir dentro…**: crea una ubicación dentro de la seleccionada. Por ejemplo, selecciona *Planta baja*, pulsa *Añadir dentro* y escribe *Salón*. El programa propone el tipo más probable (tras una planta, una *Habitación*; tras una habitación, un *Armario*…) y un **código** corto (*PB-SAL*).
 - **Añadir al mismo nivel…**: crea una hermana de la seleccionada.
-- **Arrastrar y soltar**: reorganiza el árbol. **Todo lo que contiene una ubicación viaja con ella**: si mueves una estantería, sus baldas y sus libros van detrás.
-- **Subir / Bajar**: cambia el orden entre hermanas.
+- **Ordenar**: arrastra y suelta en el árbol, o usa *Subir* y *Bajar*. Funciona aquí y también directamente en el árbol de la ventana principal. **El orden se guarda** y se mantiene al volver a abrir el programa. Por ejemplo, puedes poner la Buhardilla arriba del todo.
+- **Mover con contenido**: **todo lo que contiene una ubicación viaja con ella**. Si mueves una estantería, sus baldas y sus libros van detrás.
 - **Mover a…**: lleva la ubicación dentro de otra sin arrastrar.
 - **Borrar…**: si la ubicación contiene elementos, el programa te pide primero **a dónde moverlos**. Nunca se pierde nada sin preguntar.
-- **Tipos de ubicación…**: añade tipos propios (Baúl, Vitrina, Maleta…) con su prefijo para los códigos.
+- **Tipos de ubicación…**: añade tipos propios (Baúl, Vitrina, Maleta…) con su prefijo para los códigos y su icono.
 
 No hay niveles obligatorios. Puedes tener `Planta baja › Salón › Estantería A › Balda 3` y también `Sótano › Caja 7` directamente.
 
 ---
 
-## 4. Registrar elementos
+## 5. Registrar elementos
 
-### 4.1 Uno a uno: la ficha
+### 5.1 Uno a uno: la ficha
 
 Pulsa **Nuevo**, o la flecha junto a él para elegir el tipo. Si tenías una ubicación seleccionada en el árbol, la ficha ya viene con ella.
 
@@ -85,7 +110,7 @@ Pulsa **Nuevo**, o la flecha junto a él para elegir el tipo. Si tenías una ubi
 
 Si el ISBN ya existe en tu colección, el programa te avisa antes de guardar. Puede que tengas dos ejemplares.
 
-### 4.2 Muchos seguidos: el alta masiva
+### 5.2 Muchos seguidos: el alta masiva
 
 Pulsa **Alta masiva**. Es la forma más rápida de catalogar una balda o una caja entera.
 
@@ -101,7 +126,7 @@ Si hay varias personas, sepáralas con punto y coma: `Cristina Durán; Miguel Á
 
 ---
 
-## 5. Buscar
+## 6. Buscar
 
 Escribe en el buscador; los resultados aparecen mientras escribes.
 
@@ -117,7 +142,7 @@ La búsqueda se combina con la ubicación seleccionada en el árbol y con los **
 
 ---
 
-## 6. Mover, prestar y borrar
+## 7. Mover, prestar y borrar
 
 - **Mover**: selecciona uno o varios elementos (Ctrl o Mayús + clic) y **arrástralos a una ubicación del árbol**, o usa *Mover a…*.
 - **Prestar**: con uno o varios elementos seleccionados, menú *Elemento › Prestar a…* o clic derecho. Para devolverlos: *Marcar como devuelto*.
@@ -125,7 +150,7 @@ La búsqueda se combina con la ubicación seleccionada en el árbol y con los **
 
 ---
 
-## 7. Etiquetas para cajas y baldas
+## 8. Etiquetas para cajas y baldas
 
 Pulsa **Etiquetas** (menú *Informes*).
 
@@ -144,7 +169,7 @@ El QR contiene el código de la ubicación (por ejemplo `PB-SAL-EA-B3`). Si lo e
 
 ---
 
-## 8. Informes
+## 9. Informes
 
 Menú **Informes**:
 
@@ -154,7 +179,7 @@ Menú **Informes**:
 
 ---
 
-## 9. Tipos de elemento propios
+## 10. Tipos de elemento propios
 
 Menú **Catálogo › Tipos de elemento y campos…**
 
@@ -165,7 +190,7 @@ Menú **Catálogo › Tipos de elemento y campos…**
 
 ---
 
-## 10. Copias de seguridad
+## 11. Copias de seguridad
 
 - **Automáticas**: cada vez que cierras el programa se guarda una copia de la base de datos en `datos\copias`. Se conservan las últimas 10; puedes cambiar el número en *Preferencias*.
 - **Manual**: *Archivo › Hacer copia de seguridad…* crea un **ZIP con todo** (datos, portadas y preferencias). **Guárdalo de vez en cuando fuera del ordenador**, por ejemplo en un USB o en la nube.
@@ -175,7 +200,7 @@ Menú **Catálogo › Tipos de elemento y campos…**
 
 ---
 
-## 11. Preferencias
+## 12. Preferencias
 
 *Archivo › Preferencias…*
 
@@ -183,10 +208,11 @@ Menú **Catálogo › Tipos de elemento y campos…**
 - Clave de Google Books (opcional).
 - Copia automática al cerrar y número de copias que se conservan.
 - Número de títulos que se listan en cada etiqueta.
+- Apariencia: tema, tamaño de la interfaz y tipo de letra (ver apartado 3).
 
 ---
 
-## 12. Problemas frecuentes
+## 13. Problemas frecuentes
 
 | Problema | Solución |
 |---|---|

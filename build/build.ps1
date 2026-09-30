@@ -1,11 +1,11 @@
-﻿# Genera la versión portable de Bibliotecario Virtual.
+﻿# Genera la versión portable de LibriDomus.
 #
 # Uso (desde la carpeta del proyecto, en PowerShell):
 #     .\build\build.ps1
 #
 # Resultado:
-#     build\salida\BibliotecarioVirtual\          <- carpeta portable lista para usar
-#     build\salida\BibliotecarioVirtual-X.Y.Z.zip <- la misma carpeta comprimida
+#     build\salida\LibriDomus\          <- carpeta portable lista para usar
+#     build\salida\LibriDomus-X.Y.Z.zip <- la misma carpeta comprimida
 #
 # Pasos: pruebas automáticas -> PyInstaller (modo carpeta) -> autoprueba del .exe -> ZIP.
 
@@ -26,23 +26,32 @@ if ($LASTEXITCODE -ne 0) { throw "Las pruebas han fallado. No se genera el ejecu
 Write-Host "== 2/4 PyInstaller" -ForegroundColor Cyan
 $salida = Join-Path $raiz "build\salida"
 & $python -m PyInstaller --noconfirm --clean --windowed --onedir `
-    --name BibliotecarioVirtual `
+    --name LibriDomus `
     --icon (Join-Path $raiz "build\icono.ico") `
-    --add-data "$(Join-Path $raiz 'bibliotecario\recursos');bibliotecario\recursos" `
+    --add-data "$(Join-Path $raiz 'libridomus\recursos');libridomus\recursos" `
     --distpath $salida `
     --workpath (Join-Path $raiz "build\work") `
     --specpath (Join-Path $raiz "build\work") `
-    (Join-Path $raiz "BibliotecarioVirtual.py")
+    (Join-Path $raiz "LibriDomus.py")
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller ha fallado." }
 
-Write-Host "== 3/4 Autoprueba del ejecutable" -ForegroundColor Cyan
-$carpetaApp = Join-Path $salida "BibliotecarioVirtual"
-$exe = Join-Path $carpetaApp "BibliotecarioVirtual.exe"
-$datosPrueba = Join-Path $env:TEMP "bv_autoprueba"
+$carpetaApp = Join-Path $salida "LibriDomus"
+$exe = Join-Path $carpetaApp "LibriDomus.exe"
+
+Write-Host "== Dependencias: todo debe ir dentro del paquete (el equipo final no tiene Python)" -ForegroundColor Cyan
+& $python (Join-Path $raiz "build\verificar_dependencias.py") $carpetaApp
+if ($LASTEXITCODE -ne 0) { throw "Faltan dependencias en el paquete." }
+
+Write-Host "== 3/4 Autoprueba del ejecutable (con un PATH mínimo, sin Python)" -ForegroundColor Cyan
+$datosPrueba = Join-Path $env:TEMP "libridomus_autoprueba"
 Remove-Item -Recurse -Force $datosPrueba -ErrorAction SilentlyContinue
-$env:BV_DATOS = $datosPrueba
+$pathOriginal = $env:PATH
+$env:PATH = "$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\Wbem"
+Remove-Item Env:\PYTHONHOME, Env:\PYTHONPATH -ErrorAction SilentlyContinue
+$env:LIBRIDOMUS_DATOS = $datosPrueba
 $proceso = Start-Process -FilePath $exe -ArgumentList "--autoprueba" -Wait -PassThru
-Remove-Item Env:\BV_DATOS
+Remove-Item Env:\LIBRIDOMUS_DATOS
+$env:PATH = $pathOriginal
 Get-Content (Join-Path $datosPrueba "autoprueba.txt") -Encoding UTF8
 if ($proceso.ExitCode -ne 0) { throw "La autoprueba del ejecutable ha fallado." }
 
@@ -51,8 +60,8 @@ Write-Host "== Manual de usuario (PDF)" -ForegroundColor Cyan
 if ($LASTEXITCODE -ne 0) { throw "No se ha podido generar el manual." }
 
 Write-Host "== 4/4 ZIP" -ForegroundColor Cyan
-$version = & $python -c "import bibliotecario; print(bibliotecario.VERSION)"
-$zip = Join-Path $salida "BibliotecarioVirtual-$version.zip"
+$version = & $python -c "import libridomus; print(libridomus.VERSION)"
+$zip = Join-Path $salida "LibriDomus-$version.zip"
 Remove-Item $zip -ErrorAction SilentlyContinue
 Compress-Archive -Path $carpetaApp -DestinationPath $zip
 $tamano = [math]::Round((Get-Item $zip).Length / 1MB, 1)

@@ -1,6 +1,6 @@
-# Bibliotecario Virtual — Documento de diseño
+# LibriDomus — Documento de diseño
 
-- **Versión:** 1.0
+- **Versión:** 1.1 (LibriDomus)
 - **Fecha:** 30/09/2026
 - **Estado:** implementado (fases 0 a 5). Ver el apartado 9.
 
@@ -61,8 +61,8 @@ Ya hay gestores de colecciones libres y offline como Tellico, GCstar o Data Crow
 ### 3.1 Estructura de la carpeta portable
 
 ```
-BibliotecarioVirtual\
-├── BibliotecarioVirtual.exe
+LibriDomus\
+├── LibriDomus.exe
 ├── _internal\               ← generado por PyInstaller (no tocar)
 └── datos\
     ├── biblioteca.db        ← toda la información
@@ -78,7 +78,7 @@ BibliotecarioVirtual\
 Tres capas sencillas, con nombres en español para facilitar el mantenimiento:
 
 ```
-bibliotecario\
+libridomus\
 ├── main.py                  ← punto de entrada
 ├── datos\                   ← acceso a SQLite
 │   ├── esquema.sql
@@ -273,14 +273,14 @@ Cada fase termina con un **ZIP portable probado** en Windows.
 2. **Tipos de ubicación iniciales**: se propone Casa, Planta, Habitación, Armario, Estantería, Balda, Caja, Cajón, Archivador y Otro. Plantas iniciales: Sótano, Planta baja, Planta alta y Buhardilla.
 3. **Número de copias automáticas** a conservar: se propone 10.
 4. **Idioma de la interfaz**: se asume solo español.
-5. **Nombre del programa**: se asume "Bibliotecario Virtual".
+5. **Nombre del programa**: se asume "LibriDomus".
 6. **Formato de la etiqueta**: tamaño por defecto (se propone 8 por folio) y cuántos títulos mostrar.
 
 ---
 
 ## 9. Estado de la implementación y decisiones tomadas
 
-Los puntos pendientes del apartado 8 se han resuelto con los valores propuestos: campos de la tabla 4.3, tipos de ubicación y plantas iniciales, 10 copias, interfaz en español, nombre «Bibliotecario Virtual» y 8 etiquetas por folio. Todo se puede cambiar desde el programa, salvo el idioma.
+Los puntos pendientes del apartado 8 se han resuelto con los valores propuestos: campos de la tabla 4.3, tipos de ubicación y plantas iniciales, 10 copias, interfaz en español, nombre «LibriDomus» y 8 etiquetas por folio. Todo se puede cambiar desde el programa, salvo el idioma.
 
 | Fase | Resultado | Pruebas automáticas acumuladas |
 |---|---|---|
@@ -305,6 +305,22 @@ Los puntos pendientes del apartado 8 se han resuelto con los valores propuestos:
   - mover o renombrar una habitación: 0,4 s,
   - copia automática: 0,2 s.
 - **Sin verificar en el equipo de desarrollo:** el análisis con Windows Defender (el servicio está detenido en ese equipo) y la prueba en otro Windows limpio. Quedan pendientes en el equipo de destino.
+
+### Versión 1.1 — LibriDomus
+
+- **Nombre e identidad:** el programa pasa a llamarse **LibriDomus**, con el logotipo de `res/`. La paleta de la interfaz sale de sus colores: ocre, madera, terracota y verde azulado.
+- **Interfaz:**
+  - barra superior con el buscador destacado;
+  - lateral de ubicaciones con iconos por tipo y número de elementos;
+  - lista con iconos, columnas configurables y rutas recortadas por la izquierda;
+  - **panel de detalle** a la derecha;
+  - pantallas de bienvenida y de «sin resultados».
+- **Iconos:** se sustituyen los emojis por iconos vectoriales **Lucide** (licencia ISC), coloreados según el tema.
+- **Apariencia personalizable:** tema claro, oscuro o según Windows; cinco tamaños de interfaz (90 % a 150 %, también con Ctrl + y Ctrl −); tipo de letra. Todo se aplica al momento y se recuerda.
+- **Orden de las plantas:** se ordenan arrastrando o con *Subir* y *Bajar*, también desde el árbol principal (clic derecho). Se guarda en la base de datos (columna `orden`).
+- **Migración 2 del esquema:** icono por tipo de ubicación y paso de emojis a nombres de icono.
+- **Empaquetado autosuficiente:** `build/verificar_dependencias.py` comprueba en cada compilación que todo lo necesario va dentro del paquete (runtime de Visual C++ y de Python incluidos). La autoprueba del `.exe` se ejecuta con un PATH sin Python.
+- **Pruebas:** 132 automáticas.
 
 ---
 

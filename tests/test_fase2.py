@@ -4,14 +4,14 @@ import pytest
 from PySide6.QtCore import QMimeData, Qt
 from PySide6.QtWidgets import QApplication
 
-from bibliotecario.datos import elementos, tipos, ubicaciones
-from bibliotecario.datos.elementos import Elemento
-from bibliotecario.interfaz import comun
-from bibliotecario.interfaz.alta_masiva import AltaMasiva
-from bibliotecario.interfaz.arbol_ubicaciones import ID_SIN_UBICACION
-from bibliotecario.interfaz.editor_tipos import COL_OCULTO, COL_OPCIONES, EditorTipos
-from bibliotecario.interfaz.modelo_resultados import MIME_ELEMENTOS
-from bibliotecario.interfaz.ventana_principal import VentanaPrincipal
+from libridomus.datos import elementos, tipos, ubicaciones
+from libridomus.datos.elementos import Elemento
+from libridomus.interfaz import comun
+from libridomus.interfaz.alta_masiva import AltaMasiva
+from libridomus.interfaz.arbol_ubicaciones import ID_SIN_UBICACION
+from libridomus.interfaz.editor_tipos import COL_OCULTO, COL_OPCIONES, EditorTipos
+from libridomus.interfaz.modelo_resultados import MIME_ELEMENTOS
+from libridomus.interfaz.ventana_principal import VentanaPrincipal
 
 
 @pytest.fixture(scope="session")
@@ -149,14 +149,14 @@ def test_editor_tipos_crear_tipo_con_campos(app, con, mensajes):
     ed = EditorTipos(con)
     ed.nuevo_tipo()
     ed.nombre.setText("Juego de mesa")
-    ed.icono.setText("🎲")
+    ed.icono.setCurrentIndex(ed.icono.findData("dices"))
     ed.roles.setText("Autor; Ilustrador")
     ed.anadir_campo(tipos.Campo(None, "", "Jugadores", "texto"))
     ed.anadir_campo(tipos.Campo(None, "", "Duración", "lista"))
     ed.tabla.item(1, COL_OPCIONES).setText("Corta; Media; Larga")
     assert ed.guardar()
     t = tipos.por_nombre(con, "Juego de mesa")
-    assert t.roles == ["Autor", "Ilustrador"] and t.icono == "🎲"
+    assert t.roles == ["Autor", "Ilustrador"] and t.icono == "dices"
     assert [(c.etiqueta, c.opciones) for c in t.campos] == [("Jugadores", []), ("Duración", ["Corta", "Media", "Larga"])]
     assert ed.hubo_cambios
 

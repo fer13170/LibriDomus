@@ -4,8 +4,8 @@ import sqlite3
 
 import pytest
 
-from bibliotecario import autoprueba, rutas
-from bibliotecario.datos import conexion, esquema
+from libridomus import autoprueba, rutas
+from libridomus.datos import conexion, esquema
 
 
 def test_base_datos_nueva_tiene_version_actual(con):

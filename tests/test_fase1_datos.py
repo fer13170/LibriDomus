@@ -2,11 +2,11 @@
 
 import pytest
 
-from bibliotecario import texto
-from bibliotecario.datos import elementos, tipos, ubicaciones
-from bibliotecario.datos.elementos import Elemento
-from bibliotecario.servicios import busqueda
-from bibliotecario.servicios.busqueda import Filtros
+from libridomus import texto
+from libridomus.datos import elementos, tipos, ubicaciones
+from libridomus.datos.elementos import Elemento
+from libridomus.servicios import busqueda
+from libridomus.servicios.busqueda import Filtros
 
 
 # ---------------------------------------------------------------- ayudas

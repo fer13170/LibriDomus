@@ -1,4 +1,4 @@
-# Bibliotecario Virtual
+# LibriDomus
 
 Aplicación de escritorio para Windows, **sin conexión**, que registra dónde se guarda cada libro, revista, disco, película, videojuego, partitura, álbum de fotos, caja de diapositivas, carpeta o documento de una casa. Organiza la casa en **plantas › habitaciones › muebles › baldas › cajas**, con tantos niveles como hagan falta.
 
@@ -8,7 +8,9 @@ Aplicación de escritorio para Windows, **sin conexión**, que registra dónde s
 - Alta masiva por balda y autocompletado por ISBN (Open Library) cuando hay Internet.
 - Portadas, préstamos, etiquetas con QR para imprimir en A4 e informes en PDF.
 - Copias de seguridad automáticas y manuales, y restauración.
-- Carpeta portable: `BibliotecarioVirtual.exe` + `_internal` + `datos`.
+- Interfaz con tema claro u oscuro, tamaño de letra ajustable y panel de detalle.
+- No necesita Python ni nada instalado en el equipo: todo va dentro del paquete.
+- Carpeta portable: `LibriDomus.exe` + `_internal` + `datos`.
 
 ## Documentación
 
@@ -25,6 +27,6 @@ Aplicación de escritorio para Windows, **sin conexión**, que registra dónde s
 py -3.12 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements-dev.txt
 .venv\Scripts\python -m pytest -q          # pruebas
-.venv\Scripts\python BibliotecarioVirtual.py   # abrir el programa
+.venv\Scripts\python LibriDomus.py   # abrir el programa
 .\build\build.ps1                           # generar el ZIP portable
 ```

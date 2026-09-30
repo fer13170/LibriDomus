@@ -3,12 +3,12 @@
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from bibliotecario.datos import elementos, tipos, ubicaciones
-from bibliotecario.interfaz import comun, editor_ubicaciones, ventana_principal
-from bibliotecario.interfaz.arbol_ubicaciones import ID_SIN_UBICACION, ID_TODAS
-from bibliotecario.interfaz.editor_ubicaciones import EditorUbicaciones
-from bibliotecario.interfaz.ficha_elemento import FichaElemento
-from bibliotecario.interfaz.ventana_principal import VentanaPrincipal
+from libridomus.datos import elementos, tipos, ubicaciones
+from libridomus.interfaz import comun, editor_ubicaciones, ventana_principal
+from libridomus.interfaz.arbol_ubicaciones import ID_SIN_UBICACION, ID_TODAS
+from libridomus.interfaz.editor_ubicaciones import EditorUbicaciones
+from libridomus.interfaz.ficha_elemento import FichaElemento
+from libridomus.interfaz.ventana_principal import VentanaPrincipal
 
 
 @pytest.fixture(scope="session")

@@ -1,57 +1,70 @@
-"""Dibuja el icono del programa (una estantería con libros) y lo guarda como
-build/icono.ico (para el .exe) y bibliotecario/recursos/icono.png (para las ventanas).
+"""Genera los iconos de LibriDomus a partir de res/LibriDomus---Icono.png:
+
+- build/icono.ico                       icono del .exe (16, 24, 32, 48, 64, 128 y 256 px)
+- libridomus/recursos/icono.png         icono cuadrado de las ventanas (256 px)
+- libridomus/recursos/logo.png          el dibujo original, para «Acerca de» y la pantalla de bienvenida
 
 Uso:  .venv\\Scripts\\python build\\generar_icono.py
 """
 
+import struct
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QRectF, Qt
-from PySide6.QtGui import QColor, QGuiApplication, QImage, QPainter
+from PySide6.QtCore import QBuffer, QIODevice, QPoint, Qt
+from PySide6.QtGui import QGuiApplication, QImage, QPainter
 
 RAIZ = Path(__file__).resolve().parent.parent
+ORIGEN = RAIZ / "res" / "LibriDomus---Icono.png"
+TAMANOS_ICO = [16, 24, 32, 48, 64, 128, 256]
 
 
-def dibujar(lado: int) -> QImage:
-    imagen = QImage(lado, lado, QImage.Format.Format_ARGB32)
-    imagen.fill(Qt.GlobalColor.transparent)
-    p = QPainter(imagen)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    u = lado / 64.0
-    # Fondo redondeado
-    p.setPen(Qt.PenStyle.NoPen)
-    p.setBrush(QColor("#2f4858"))
-    p.drawRoundedRect(QRectF(2 * u, 2 * u, 60 * u, 60 * u), 10 * u, 10 * u)
-    # Balda
-    p.setBrush(QColor("#c89b6d"))
-    p.drawRect(QRectF(8 * u, 48 * u, 48 * u, 5 * u))
-    # Lomos de libros
-    libros = [(10, 18, 7, "#e4572e"), (18, 12, 8, "#f3a712"), (27, 20, 6, "#29335c"),
-              (34, 14, 7, "#76b041"), (42, 24, 5, "#e4e4e4")]
-    for x, y, ancho, color in libros:
-        p.setBrush(QColor(color))
-        p.drawRect(QRectF(x * u, y * u, ancho * u, (48 - y) * u))
-    # Libro inclinado
-    p.save()
-    p.translate(52 * u, 48 * u)
-    p.rotate(-18)
-    p.setBrush(QColor("#a23b72"))
-    p.drawRect(QRectF(-6 * u, -26 * u, 6 * u, 26 * u))
-    p.restore()
+def cuadrado(imagen: QImage, lado: int) -> QImage:
+    """Centra la imagen (sin deformarla) en un lienzo cuadrado transparente."""
+    lienzo = QImage(lado, lado, QImage.Format.Format_ARGB32)
+    lienzo.fill(Qt.GlobalColor.transparent)
+    margen = max(1, lado // 32)
+    escalada = imagen.scaled(lado - 2 * margen, lado - 2 * margen, Qt.AspectRatioMode.KeepAspectRatio,
+                             Qt.TransformationMode.SmoothTransformation)
+    p = QPainter(lienzo)
+    p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+    p.drawImage(QPoint((lado - escalada.width()) // 2, (lado - escalada.height()) // 2), escalada)
     p.end()
-    return imagen
+    return lienzo
+
+
+def png_bytes(imagen: QImage) -> bytes:
+    buffer = QBuffer()
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    imagen.save(buffer, "PNG")
+    return bytes(buffer.data())
+
+
+def escribir_ico(imagenes: list[QImage], destino: Path) -> None:
+    """Formato ICO con imágenes PNG dentro (admitido desde Windows Vista)."""
+    datos = [png_bytes(i) for i in imagenes]
+    cabecera = struct.pack("<HHH", 0, 1, len(datos))
+    desplazamiento = 6 + 16 * len(datos)
+    directorio = b""
+    for imagen, contenido in zip(imagenes, datos):
+        lado = imagen.width()
+        directorio += struct.pack("<BBBBHHII", lado % 256, lado % 256, 0, 0, 1, 32,
+                                  len(contenido), desplazamiento)
+        desplazamiento += len(contenido)
+    destino.write_bytes(cabecera + directorio + b"".join(datos))
 
 
 def main() -> int:
     app = QGuiApplication(sys.argv)  # noqa: F841 - necesario para pintar
-    recursos = RAIZ / "bibliotecario" / "recursos"
-    recursos.mkdir(exist_ok=True)
-    dibujar(256).save(str(recursos / "icono.png"))
-    # El formato ICO de Qt guarda una sola resolución: 256 px, que Windows escala.
-    if not dibujar(256).save(str(RAIZ / "build" / "icono.ico"), "ICO"):
-        print("No se pudo guardar el .ico")
+    original = QImage(str(ORIGEN))
+    if original.isNull():
+        print(f"No se puede leer {ORIGEN}")
         return 1
+    recursos = RAIZ / "libridomus" / "recursos"
+    recursos.mkdir(exist_ok=True)
+    cuadrado(original, 256).save(str(recursos / "icono.png"))
+    original.save(str(recursos / "logo.png"))
+    escribir_ico([cuadrado(original, t) for t in TAMANOS_ICO], RAIZ / "build" / "icono.ico")
     print("Iconos generados.")
     return 0
 

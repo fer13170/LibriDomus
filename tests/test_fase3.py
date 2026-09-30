@@ -7,15 +7,15 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage
 from PySide6.QtWidgets import QApplication, QInputDialog
 
-from bibliotecario import rutas
-from bibliotecario.datos import elementos, tipos, ubicaciones
-from bibliotecario.datos.elementos import Elemento
-from bibliotecario.interfaz import comun
-from bibliotecario.interfaz.alta_masiva import AltaMasiva
-from bibliotecario.interfaz.ficha_elemento import FichaElemento
-from bibliotecario.interfaz.ventana_principal import VentanaPrincipal
-from bibliotecario.servicios import busqueda, configuracion, isbn, portadas
-from bibliotecario.servicios.busqueda import Filtros
+from libridomus import rutas
+from libridomus.datos import elementos, tipos, ubicaciones
+from libridomus.datos.elementos import Elemento
+from libridomus.interfaz import comun
+from libridomus.interfaz.alta_masiva import AltaMasiva
+from libridomus.interfaz.ficha_elemento import FichaElemento
+from libridomus.interfaz.ventana_principal import VentanaPrincipal
+from libridomus.servicios import busqueda, configuracion, isbn, portadas
+from libridomus.servicios.busqueda import Filtros
 
 
 @pytest.fixture(scope="session")
@@ -150,7 +150,7 @@ def test_portada_de_elemento_borrado_se_limpia_al_arrancar(app, con):
 
 
 def test_limpieza_respeta_portadas_de_las_copias(app, con):
-    from bibliotecario.servicios import copias
+    from libridomus.servicios import copias
     nombre = portadas.guardar_desde_bytes(imagen_png(10, 10))
     id_ = elementos.guardar(con, Elemento(tipo_id=tipos.por_nombre(con, "Libro").id, titulo="X", portada=nombre))
     copias.copia_automatica(con, 10)
