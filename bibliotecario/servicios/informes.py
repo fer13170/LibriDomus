@@ -7,7 +7,8 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QMarginsF, QRectF, QSizeF, Qt
-from PySide6.QtGui import QColor, QFont, QPageLayout, QPageSize, QPainter, QPdfWriter, QTextDocument
+from PySide6.QtGui import (QColor, QFont, QPageLayout, QPageSize, QPainter, QPdfWriter, QTextCursor,
+                           QTextDocument)
 
 from .. import NOMBRE
 from ..datos import ubicaciones
@@ -57,7 +58,37 @@ def _documento(titulo: str, subtitulo: str, cuerpo: str) -> str:
 
 
 def _escribir_pdf(contenido_html: str, destino: Path | str, titulo: str) -> int:
-    """Pagina el HTML en A4 y añade 'Página n de N' al pie. Devuelve el número de páginas."""
+    documento = QTextDocument()
+    documento.setHtml(contenido_html)
+    return escribir_documento(documento, destino, titulo)
+
+
+def markdown_a_pdf(markdown: str, destino: Path | str, titulo: str) -> int:
+    """Convierte un texto Markdown (p. ej. el manual de usuario) en PDF A4."""
+    documento = QTextDocument()
+    documento.setDefaultFont(QFont("Segoe UI", 10))
+    documento.setMarkdown(markdown)
+    # El texto `entre comillas invertidas` se marca como monoespaciado; se fija Consolas
+    # (incluida en Windows) para no depender de la fuente que elija el sistema.
+    cursor = QTextCursor(documento)
+    bloque = documento.begin()
+    while bloque.isValid():
+        iterador = bloque.begin()
+        while not iterador.atEnd():
+            fragmento = iterador.fragment()
+            formato = fragmento.charFormat()
+            if formato.fontFixedPitch():
+                formato.setFontFamilies(["Consolas", "Courier New"])
+                cursor.setPosition(fragmento.position())
+                cursor.setPosition(fragmento.position() + fragmento.length(), QTextCursor.MoveMode.KeepAnchor)
+                cursor.setCharFormat(formato)
+            iterador += 1
+        bloque = bloque.next()
+    return escribir_documento(documento, destino, titulo)
+
+
+def escribir_documento(documento: QTextDocument, destino: Path | str, titulo: str) -> int:
+    """Pagina el documento en A4 y añade 'Página n de N' al pie. Devuelve el número de páginas."""
     pdf = QPdfWriter(str(destino))
     # A 96 ppp un píxel del documento coincide con un punto del PDF (el texto sigue siendo vectorial).
     pdf.setResolution(96)
@@ -67,8 +98,6 @@ def _escribir_pdf(contenido_html: str, destino: Path | str, titulo: str) -> int:
     pdf.setCreator(NOMBRE)
     area = pdf.pageLayout().paintRectPixels(96)
     alto_pie = 28
-    documento = QTextDocument()
-    documento.setHtml(contenido_html)
     documento.setPageSize(QSizeF(area.width(), area.height() - alto_pie))
     alto_pagina = documento.pageSize().height()
     paginas = documento.pageCount()

@@ -382,24 +382,35 @@ class FichaElemento(QDialog):
             notas=self.notas.toPlainText().strip(),
             personas=self.personas.valor(),
             etiquetas=[x for x in self.etiquetas.text().split(",")],
-            valores={campo_id: ed.valor() for campo_id, ed in self.editores.items()},
+            valores=self._valores_a_guardar(base),
             portada=self.portada.nombre,
             prestado_a=prestado_a,
             fecha_prestamo=fecha_prestamo if prestado_a else "",
         )
         return e
 
+    def _valores_a_guardar(self, base: Elemento | None) -> dict[int, str]:
+        """Valores de los campos propios. Los campos ocultos no tienen editor en pantalla,
+        pero sus valores guardados se conservan (ocultar un campo no debe borrar datos)."""
+        valores: dict[int, str] = {}
+        if base:
+            del_tipo = {c.id for c in self.tipo_actual().campos}  # incluye los ocultos
+            valores = {cid: v for cid, v in base.valores.items() if cid in del_tipo}
+        valores.update({campo_id: ed.valor() for campo_id, ed in self.editores.items()})
+        return valores
+
     # ------------------------------------------------------------ autocompletar por ISBN
 
     def autocompletar(self) -> None:
-        def acabar():
+        def acabar(_vigente: bool = True):
             self.boton_autocompletar.setEnabled(True)
             self.boton_autocompletar.setText("🔎 Autocompletar")
 
         # Se desactiva antes de lanzar: la respuesta podría llegar antes de que 'consultar' vuelva.
         self.boton_autocompletar.setEnabled(False)
         self.boton_autocompletar.setText("Buscando…")
-        if not autocompletar.consultar(self, self.identificador.text(), self.aplicar_datos_isbn, acabar):
+        if not autocompletar.consultar(self, self.identificador.text(), self.aplicar_datos_isbn, acabar,
+                                       texto_actual=self.identificador.text):
             acabar()
 
     def aplicar_datos_isbn(self, datos: DatosLibro) -> None:

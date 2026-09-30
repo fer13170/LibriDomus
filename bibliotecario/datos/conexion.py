@@ -25,6 +25,14 @@ def abrir(ruta: Path | str | None = None) -> sqlite3.Connection:
     return con
 
 
+def abrir_solo_lectura(ruta: Path | str) -> sqlite3.Connection:
+    """Abre otra base de datos (p. ej. una copia) sin posibilidad de modificarla.
+
+    La URI se construye con Path.as_uri() para que rutas con '#', '%' o espacios funcionen.
+    """
+    return sqlite3.connect(Path(ruta).resolve().as_uri() + "?mode=ro", uri=True)
+
+
 def _comprobar_fts5(con: sqlite3.Connection) -> None:
     try:
         con.execute("CREATE VIRTUAL TABLE temp._prueba_fts USING fts5(x)")

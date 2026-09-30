@@ -11,6 +11,7 @@ import re
 import sqlite3
 from dataclasses import dataclass
 
+from .. import texto
 from ..datos import ubicaciones
 
 
@@ -65,8 +66,25 @@ _TROZO = re.compile(r'(-?)"([^"]*)"|(\S+)')
 def construir_consulta(texto: str) -> str | None:
     """Convierte lo que escribe el usuario en una consulta FTS5 segura.
 
-    Devuelve None si no hay nada que buscar.
+    Devuelve None si no hay nada que buscar (las exclusiones solas las trata
+    ``construir_exclusion``, porque FTS5 no admite una consulta que empiece por NOT).
     """
+    incluir, excluir = _terminos(texto)
+    if not incluir:
+        return None
+    consulta = " AND ".join(incluir)
+    for termino in excluir:
+        consulta += f" NOT {termino}"
+    return consulta
+
+
+def construir_exclusion(texto: str) -> str | None:
+    """Si la búsqueda solo tiene exclusiones ('-palabra'), consulta con lo que hay que quitar."""
+    incluir, excluir = _terminos(texto)
+    return " OR ".join(excluir) if excluir and not incluir else None
+
+
+def _terminos(texto: str) -> tuple[list[str], list[str]]:
     incluir: list[str] = []
     excluir: list[str] = []
     for negado_frase, frase, suelto in _TROZO.findall(texto or ""):
@@ -80,12 +98,7 @@ def construir_consulta(texto: str) -> str | None:
         for palabra in _PALABRA.findall(suelto):
             termino = f'"{palabra}"*'
             (excluir if negado else incluir).append(termino)
-    if not incluir:
-        return None
-    consulta = " AND ".join(incluir)
-    for termino in excluir:
-        consulta += f" NOT {termino}"
-    return consulta
+    return incluir, excluir
 
 
 @dataclass
@@ -127,7 +140,7 @@ def buscar(con: sqlite3.Connection, filtros: Filtros) -> list[Resultado]:
     condiciones: list[str] = []
     parametros: list = []
     union_fts = ""
-    orden = "e.titulo COLLATE ES"
+    orden = ""
 
     consulta = construir_consulta(filtros.texto)
     if consulta:
@@ -135,7 +148,12 @@ def buscar(con: sqlite3.Connection, filtros: Filtros) -> list[Resultado]:
         condiciones.append("elemento_fts MATCH ?")
         parametros.append(consulta)
         # El título pesa más que el resto de columnas al ordenar por relevancia.
-        orden = "bm25(elemento_fts, 10.0, 5.0, 3.0, 1.0, 1.0), e.titulo COLLATE ES"
+        orden = "ORDER BY bm25(elemento_fts, 10.0, 5.0, 3.0, 1.0, 1.0)"
+    else:
+        exclusion = construir_exclusion(filtros.texto)
+        if exclusion:
+            condiciones.append("e.id NOT IN (SELECT rowid FROM elemento_fts WHERE elemento_fts MATCH ?)")
+            parametros.append(exclusion)
     if filtros.tipo_id is not None:
         condiciones.append("e.tipo_id = ?")
         parametros.append(filtros.tipo_id)
@@ -170,15 +188,16 @@ def buscar(con: sqlite3.Connection, filtros: Filtros) -> list[Resultado]:
     sql = f"""
         SELECT e.id, e.tipo_id, t.nombre AS tipo, t.icono, e.titulo, e.subtitulo, e.anio, e.ubicacion_id,
                e.estado, e.idioma, e.consumido, e.valoracion, e.prestado_a, e.identificador, e.portada,
-               (SELECT GROUP_CONCAT(p.nombre, ', ') FROM (
-                    SELECT p.nombre FROM elemento_persona ep JOIN persona p ON p.id = ep.persona_id
-                    WHERE ep.elemento_id = e.id ORDER BY ep.orden) p) AS creadores
+               c.creadores
         FROM elemento e JOIN tipo_elemento t ON t.id = e.tipo_id {union_fts}
+        LEFT JOIN (SELECT ep.elemento_id, GROUP_CONCAT(p.nombre, ', ' ORDER BY ep.orden) AS creadores
+                   FROM elemento_persona ep JOIN persona p ON p.id = ep.persona_id
+                   GROUP BY ep.elemento_id) c ON c.elemento_id = e.id
         {donde}
-        ORDER BY {orden}
+        {orden}
     """
     rutas = ubicaciones.rutas_todas(con)
-    return [
+    resultados = [
         Resultado(
             id=f["id"], tipo_id=f["tipo_id"], tipo=f["tipo"], icono=f["icono"], titulo=f["titulo"],
             subtitulo=f["subtitulo"], creadores=f["creadores"] or "", anio=f["anio"],
@@ -189,3 +208,9 @@ def buscar(con: sqlite3.Connection, filtros: Filtros) -> list[Resultado]:
         )
         for f in con.execute(sql, parametros)
     ]
+    if not consulta:
+        # Orden alfabético sin acentos. Se hace aquí (una clave por fila) y no con
+        # 'COLLATE ES' en SQL, que llamaría a Python en cada comparación: con 20.000
+        # elementos pasa de ~2,4 s a unas décimas.
+        resultados.sort(key=lambda r: texto.clave_orden(r.titulo))
+    return resultados

@@ -1,8 +1,8 @@
 # Bibliotecario Virtual — Documento de diseño
 
-- **Versión:** 0.1 (borrador para revisión)
+- **Versión:** 1.0
 - **Fecha:** 30/09/2026
-- **Estado:** pendiente de aprobación
+- **Estado:** implementado (fases 0 a 5). Ver el apartado 9.
 
 ---
 
@@ -278,7 +278,37 @@ Cada fase termina con un **ZIP portable probado** en Windows.
 
 ---
 
-## 9. Referencias
+## 9. Estado de la implementación y decisiones tomadas
+
+Los puntos pendientes del apartado 8 se han resuelto con los valores propuestos: campos de la tabla 4.3, tipos de ubicación y plantas iniciales, 10 copias, interfaz en español, nombre «Bibliotecario Virtual» y 8 etiquetas por folio. Todo se puede cambiar desde el programa, salvo el idioma.
+
+| Fase | Resultado | Pruebas automáticas acumuladas |
+|---|---|---|
+| 0 | Entorno, esquema v1, autoprueba del `.exe`, empaquetado `onedir` e informe de ISBN | 8 |
+| 1 | Catálogo de ubicaciones, tipos, elementos, búsqueda FTS5, ventana principal, ficha y editor de ubicaciones | 58 |
+| 2 | Filtros, alta masiva, arrastrar elementos al árbol y editor de tipos y campos | 70 |
+| 3 | Portadas, autocompletado por ISBN en segundo plano, préstamos y preferencias | 95 |
+| 4 | Etiquetas A4 con QR, informes PDF paginados y copias de seguridad (automática, ZIP y restauración) | 108 |
+| 5 | Revisión de código independiente (5 errores corregidos, con pruebas de regresión), rendimiento con 20 000 elementos, manuales y versión 1.0 | 119 |
+
+**Decisiones y cambios respecto al diseño inicial:**
+
+- **ISBN:** el endpoint `api/books` de Open Library ya no existe (404). Se usa `/isbn/{isbn}.json` más `/authors/…`. Google Books solo se consulta con una clave propia, porque la cuota anónima responde 429. Ver `Fase0_informe.md`.
+- **Plantas:** son ubicaciones de tipo «Planta» que cuelgan de la casa. Se crean al iniciar y son editables como cualquier otra ubicación.
+- **Portadas:** no se borran al borrar un elemento o cambiar su imagen. La limpieza del arranque solo elimina las que no usa ni la base de datos ni ninguna copia guardada, para que restaurar una copia no deje portadas perdidas.
+- **Copias automáticas:** solo guardan la base de datos (unos 10 MB con 20 000 elementos). La copia manual en ZIP incluye también las portadas y las preferencias.
+- **Restauración atómica:** se escribe un archivo provisional y se sustituye con `os.replace`. Si algo falla, la base de datos anterior queda intacta y el programa se reinicia.
+- **Rendimiento:** con 20 000 elementos y 261 ubicaciones:
+  - abrir la ventana principal: 0,38 s,
+  - buscar texto: menos de 0,15 s,
+  - ordenar una columna: 0,15 s,
+  - mover o renombrar una habitación: 0,4 s,
+  - copia automática: 0,2 s.
+- **Sin verificar en el equipo de desarrollo:** el análisis con Windows Defender (el servicio está detenido en ese equipo) y la prueba en otro Windows limpio. Quedan pendientes en el equipo de destino.
+
+---
+
+## 10. Referencias
 
 - Tellico: <https://sugggest.com/software/tellico>
 - Data Crow (alternativas): <https://alternativeto.net/software/data-crow>

@@ -7,6 +7,7 @@
 - Restaurar: desde una copia .db o .zip. Antes se guarda el estado actual por si acaso.
 """
 
+import os
 import shutil
 import sqlite3
 import tempfile
@@ -78,7 +79,7 @@ def copia_manual(con: sqlite3.Connection, destino_zip: Path | str) -> Path:
 def validar_base_datos(ruta: Path) -> int:
     """Comprueba que el archivo es una base de datos de este programa. Devuelve su versión de esquema."""
     try:
-        prueba = sqlite3.connect(f"file:{ruta}?mode=ro", uri=True)
+        prueba = conexion.abrir_solo_lectura(ruta)
         try:
             version = prueba.execute("PRAGMA user_version").fetchone()[0]
             tablas = {f[0] for f in prueba.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
@@ -123,11 +124,20 @@ def restaurar(con_actual: sqlite3.Connection | None, origen: Path | str) -> Path
         previa = rutas.carpeta_copias() / f"antes_de_restaurar_{_marca()}.db"
         if con_actual is not None:
             conexion.copiar_en_caliente(con_actual, previa)
-            con_actual.close()
         elif rutas.ruta_base_datos().exists():
             shutil.copy2(rutas.ruta_base_datos(), previa)
 
-        shutil.copy2(bd_nueva, rutas.ruta_base_datos())
+        # La copia se deja primero junto a la base de datos y luego se sustituye de golpe
+        # (os.replace): si algo falla antes, biblioteca.db queda intacta, nunca a medias.
+        provisional = rutas.ruta_base_datos().with_suffix(".db.restaurando")
+        shutil.copy2(bd_nueva, provisional)
+        if con_actual is not None:
+            con_actual.close()  # en Windows no se puede sustituir un archivo abierto
+        try:
+            os.replace(provisional, rutas.ruta_base_datos())
+        except OSError:
+            provisional.unlink(missing_ok=True)
+            raise
         portadas_zip = temporal / "portadas"
         if portadas_zip.is_dir():  # se añaden las portadas de la copia (no se borra ninguna)
             for imagen in portadas_zip.glob("*.jpg"):

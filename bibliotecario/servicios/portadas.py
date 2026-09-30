@@ -64,26 +64,33 @@ def borrar(nombre: str) -> None:
         (rutas.carpeta_portadas() / Path(nombre).name).unlink(missing_ok=True)
 
 
-def _portadas_de_copias() -> set[str]:
-    """Portadas que usan las copias de seguridad guardadas (para no dejarlas cojas si se restauran)."""
+def _portadas_de_copias() -> set[str] | None:
+    """Portadas que usan las copias de seguridad guardadas (para no dejarlas cojas si se restauran).
+
+    Devuelve None si alguna copia no se puede leer: en ese caso no se sabe qué necesita.
+    """
+    from ..datos.conexion import abrir_solo_lectura
+
     usadas: set[str] = set()
     for copia in rutas.carpeta_copias().glob("*.db"):
         try:
-            bd = sqlite3.connect(f"file:{copia}?mode=ro", uri=True)
+            bd = abrir_solo_lectura(copia)
             try:
                 usadas.update(f[0] for f in bd.execute("SELECT portada FROM elemento WHERE portada <> ''"))
             finally:
                 bd.close()
         except sqlite3.Error:
-            continue
+            return None
     return usadas
 
 
 def limpiar_huerfanas(con: sqlite3.Connection) -> int:
     """Borra imágenes que no usa ningún elemento ni ninguna copia de seguridad guardada
     (p. ej. las de una ficha que se cerró de forma inesperada)."""
-    en_uso = {f[0] for f in con.execute("SELECT portada FROM elemento WHERE portada <> ''")}
-    en_uso |= _portadas_de_copias()
+    de_copias = _portadas_de_copias()
+    if de_copias is None:
+        return 0  # ante la duda, no se borra nada
+    en_uso = {f[0] for f in con.execute("SELECT portada FROM elemento WHERE portada <> ''")} | de_copias
     borradas = 0
     for archivo in rutas.carpeta_portadas().glob("*.jpg"):
         if archivo.name not in en_uso:

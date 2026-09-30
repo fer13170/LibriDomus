@@ -1,7 +1,9 @@
 """Ventana principal: árbol de ubicaciones, buscador y lista de elementos."""
 
 import sqlite3
+import tempfile
 from datetime import date
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence
@@ -10,7 +12,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QHBoxLay
                                QPushButton, QSplitter,
                                QTableView, QToolButton, QVBoxLayout, QWidget)
 
-from .. import NOMBRE, VERSION
+from .. import NOMBRE, VERSION, rutas
 from ..datos import elementos, tipos, ubicaciones
 from ..servicios import busqueda, copias, informes
 from ..servicios.busqueda import Filtros
@@ -26,6 +28,14 @@ from .ficha_elemento import FichaElemento
 from .modelo_resultados import ModeloResultados, OrdenadorResultados
 from .preferencias import Preferencias
 from .selector_ubicacion import elegir_ubicacion
+
+
+def conexion_abierta(con: sqlite3.Connection) -> bool:
+    try:
+        con.execute("SELECT 1")
+        return True
+    except sqlite3.ProgrammingError:
+        return False
 
 
 class VentanaPrincipal(QMainWindow):
@@ -260,6 +270,11 @@ class VentanaPrincipal(QMainWindow):
             informes.addAction(accion)
 
         self.menu_ayuda = self.menuBar().addMenu("Ay&uda")
+        manual = self.menu_ayuda.addAction("Manual de usuario")
+        manual.setShortcut(QKeySequence("F1"))
+        manual.triggered.connect(self.abrir_manual)
+        carpeta = self.menu_ayuda.addAction("Abrir la carpeta de datos")
+        carpeta.triggered.connect(lambda: self._abrir(str(rutas.carpeta_datos())))
         acerca = self.menu_ayuda.addAction("Acerca de…")
         acerca.triggered.connect(lambda: comun.aviso(
             self, f"{NOMBRE} {VERSION}\n\nRegistra dónde guardas cada libro, disco, álbum o carpeta.\n"
@@ -288,6 +303,10 @@ class VentanaPrincipal(QMainWindow):
         filtros = self.filtros_actuales()
         resultados = busqueda.buscar(self.con, filtros)
         self.modelo.establecer(resultados)
+        cabecera = self.tabla.horizontalHeader()
+        if cabecera.isSortIndicatorShown() and cabecera.sortIndicatorSection() >= 0:
+            # Si el usuario ordenó por una columna, se mantiene ese orden al refrescar.
+            self.modelo.sort(cabecera.sortIndicatorSection(), cabecera.sortIndicatorOrder())
         if filtros.sin_ubicacion:
             titulo = "Sin ubicación"
         elif filtros.ubicacion_id:
@@ -423,6 +442,18 @@ class VentanaPrincipal(QMainWindow):
     def _abrir(self, ruta: str):
         QDesktopServices.openUrl(QUrl.fromLocalFile(ruta))
 
+    def abrir_manual(self):
+        """El PDF está junto al .exe; sin empaquetar se genera al vuelo desde docs/."""
+        pdf = rutas.carpeta_programa() / "Manual de usuario.pdf"
+        fuente = rutas.carpeta_programa() / "docs" / "Manual_de_usuario.md"
+        if not pdf.exists() and fuente.exists():
+            pdf = Path(tempfile.gettempdir()) / "Manual de usuario (Bibliotecario Virtual).pdf"
+            informes.markdown_a_pdf(fuente.read_text(encoding="utf-8"), pdf, "Manual de usuario")
+        if pdf.exists():
+            self._abrir(str(pdf))
+        else:
+            comun.aviso(self, "No se encuentra el archivo «Manual de usuario.pdf» junto al programa.")
+
     def informe_inventario(self, destino: str | None = None, abrir: bool = True):
         ubic = self.ubicacion_para_nuevo()
         nombre = ubicaciones.obtener(self.con, ubic).codigo if ubic else "casa"
@@ -474,7 +505,15 @@ class VentanaPrincipal(QMainWindow):
             return
         try:
             copias.restaurar(self.con, dialogo.elegida)
-        except (copias.ErrorCopia, OSError) as e:
+        except (copias.ErrorCopia, OSError, sqlite3.Error) as e:
+            if not conexion_abierta(self.con):
+                # Falló después de cerrar la conexión: los datos anteriores siguen intactos,
+                # pero hay que volver a abrirlos reiniciando el programa.
+                self.restaurado = True
+                comun.error(self, f"No se ha podido restaurar: {e}\n\nTus datos anteriores no se han "
+                                  "modificado. El programa se reiniciará.")
+                reiniciar()
+                return
             comun.error(self, f"No se ha podido restaurar: {e}")
             return
         self.restaurado = True  # la conexión ya está cerrada: no se hace copia al salir

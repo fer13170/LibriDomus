@@ -145,11 +145,14 @@ class AltaMasiva(QDialog):
             return
         self.estado_consulta.setText("Buscando datos del ISBN…")
 
-        def acabar():
-            self.estado_consulta.setText("")
-            self.titulo.setFocus()
+        def acabar(vigente: bool):
+            # Si el usuario ya está con otro elemento, no se le mueve el cursor ni se toca nada.
+            if vigente:
+                self.estado_consulta.setText("")
+                self.titulo.setFocus()
 
-        autocompletar.consultar(self, texto_isbn, self.aplicar_datos_isbn, acabar)
+        autocompletar.consultar(self, texto_isbn, self.aplicar_datos_isbn, acabar,
+                                texto_actual=self.identificador.text)
 
     def aplicar_datos_isbn(self, datos: DatosLibro) -> None:
         self.datos_isbn = datos

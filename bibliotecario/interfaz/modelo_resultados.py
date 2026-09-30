@@ -11,7 +11,17 @@ from ..servicios.busqueda import Resultado
 MIME_ELEMENTOS = "application/x-bibliotecario-elementos"
 
 COLUMNAS = ["Tipo", "Título", "Personas", "Año", "Ubicación", "Estado", "Prestado a"]
-ROL_CLAVE_ORDEN = Qt.ItemDataRole.UserRole + 1
+
+# Clave de ordenación de cada columna (sin acentos ni mayúsculas; el año, como número).
+CLAVES_ORDEN = [
+    lambda r: texto.clave_orden(r.tipo),
+    lambda r: texto.clave_orden(r.titulo + " " + r.subtitulo),
+    lambda r: texto.clave_orden(r.creadores),
+    lambda r: r.anio or 0,
+    lambda r: texto.clave_orden(r.ubicacion),
+    lambda r: texto.clave_orden(r.estado),
+    lambda r: texto.clave_orden(r.prestado_a),
+]
 
 
 class ModeloResultados(QAbstractTableModel):
@@ -22,6 +32,16 @@ class ModeloResultados(QAbstractTableModel):
     def establecer(self, filas: list[Resultado]) -> None:
         self.beginResetModel()
         self.filas = filas
+        self.endResetModel()
+
+    def sort(self, columna: int, orden=Qt.SortOrder.AscendingOrder):
+        """Ordena la lista en Python: una clave por fila (rápido incluso con 20.000 filas)."""
+        if not 0 <= columna < len(COLUMNAS):
+            return
+        # Reinicio completo del modelo (y no layoutChanged) para que la selección no quede
+        # apuntando a filas que han cambiado de sitio.
+        self.beginResetModel()
+        self.filas.sort(key=CLAVES_ORDEN[columna], reverse=orden == Qt.SortOrder.DescendingOrder)
         self.endResetModel()
 
     def rowCount(self, parent=QModelIndex()):  # noqa: N802 - nombre impuesto por Qt
@@ -65,10 +85,6 @@ class ModeloResultados(QAbstractTableModel):
                 f"{r.icono} {r.tipo}", r.titulo + (f": {r.subtitulo}" if r.subtitulo else ""), r.creadores,
                 str(r.anio) if r.anio else "", r.ubicacion or "(sin ubicación)", r.estado, r.prestado_a,
             ][col]
-        if rol == ROL_CLAVE_ORDEN:
-            if col == 3:
-                return r.anio or 0
-            return texto.clave_orden(self.data(indice, Qt.ItemDataRole.DisplayRole))
         if rol == Qt.ItemDataRole.ToolTipRole and col == 4:
             return r.ubicacion
         if rol == Qt.ItemDataRole.ToolTipRole and col == 1 and r.portada:
@@ -81,8 +97,8 @@ class ModeloResultados(QAbstractTableModel):
 
 
 class OrdenadorResultados(QSortFilterProxyModel):
-    """Ordena sin tener en cuenta acentos y el año como número."""
+    """Intermediario entre la tabla y el modelo: la ordenación la hace el propio modelo."""
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setSortRole(ROL_CLAVE_ORDEN)
+    def sort(self, columna: int, orden=Qt.SortOrder.AscendingOrder):
+        if self.sourceModel() is not None:
+            self.sourceModel().sort(columna, orden)

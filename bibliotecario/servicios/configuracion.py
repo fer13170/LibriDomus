@@ -10,6 +10,7 @@ POR_DEFECTO = {
     "copias_a_conservar": 10,        # copias automáticas que se guardan al cerrar
     "copia_al_cerrar": True,
     "etiquetas_titulos": 6,          # títulos que se listan en cada etiqueta
+    "ventana": "",                   # tamaño y posición de la ventana principal (base64)
 }
 
 

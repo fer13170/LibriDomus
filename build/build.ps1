@@ -46,6 +46,10 @@ Remove-Item Env:\BV_DATOS
 Get-Content (Join-Path $datosPrueba "autoprueba.txt") -Encoding UTF8
 if ($proceso.ExitCode -ne 0) { throw "La autoprueba del ejecutable ha fallado." }
 
+Write-Host "== Manual de usuario (PDF)" -ForegroundColor Cyan
+& $python (Join-Path $raiz "build\generar_manual.py") $carpetaApp
+if ($LASTEXITCODE -ne 0) { throw "No se ha podido generar el manual." }
+
 Write-Host "== 4/4 ZIP" -ForegroundColor Cyan
 $version = & $python -c "import bibliotecario; print(bibliotecario.VERSION)"
 $zip = Join-Path $salida "BibliotecarioVirtual-$version.zip"

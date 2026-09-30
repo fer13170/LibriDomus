@@ -1,7 +1,9 @@
 """Arranque de la interfaz gráfica."""
 
+import sqlite3
 import sys
 
+from PySide6.QtCore import QByteArray
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from .. import NOMBRE, VERSION, rutas
@@ -34,12 +36,36 @@ def ejecutar(argv: list[str]) -> int:
     portadas.limpiar_huerfanas(con)  # imágenes que quedaron sin uso (p. ej. por un cierre inesperado)
 
     ventana = VentanaPrincipal(con)
+    restaurar_geometria(ventana)
     ventana.show()
     codigo = app.exec()
+    guardar_geometria(ventana)
     if not ventana.restaurado:  # tras restaurar, la conexión ya está cerrada
         copia_al_salir(con)
         con.close()
     return codigo
+
+
+def restaurar_geometria(ventana) -> None:
+    from ..servicios import configuracion
+
+    guardada = configuracion.obtener("ventana")
+    if guardada:
+        try:
+            ventana.restoreGeometry(QByteArray.fromBase64(guardada.encode("ascii")))
+        except (UnicodeEncodeError, ValueError):
+            pass  # una preferencia dañada no impide arrancar
+
+
+def guardar_geometria(ventana) -> None:
+    from ..servicios import configuracion
+
+    ajustes = configuracion.cargar()
+    ajustes["ventana"] = bytes(ventana.saveGeometry().toBase64()).decode("ascii")
+    try:
+        configuracion.guardar(ajustes)
+    except OSError:
+        pass
 
 
 def copia_al_salir(con) -> None:
@@ -51,7 +77,7 @@ def copia_al_salir(con) -> None:
         return
     try:
         copias.copia_automatica(con, int(ajustes["copias_a_conservar"]))
-    except OSError as error:
+    except (OSError, sqlite3.Error) as error:
         QMessageBox.warning(None, NOMBRE, f"No se ha podido hacer la copia automática:\n{error}")
 
 

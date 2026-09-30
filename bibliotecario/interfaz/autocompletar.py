@@ -10,9 +10,16 @@ from . import comun
 
 
 def consultar(padre: QWidget, texto: str, al_encontrar: Callable[[DatosLibro], None],
-              al_acabar: Callable[[], None] = lambda: None) -> bool:
-    """Lanza la consulta en segundo plano. Devuelve False si ni siquiera se ha lanzado."""
-    if isbn.validar(texto) is None:
+              al_acabar: Callable[[bool], None] = lambda _vigente: None,
+              texto_actual: Callable[[], str] | None = None) -> bool:
+    """Lanza la consulta en segundo plano. Devuelve False si ni siquiera se ha lanzado.
+
+    ``texto_actual`` devuelve lo que hay escrito en el campo del ISBN cuando llega la respuesta:
+    si ya no es el ISBN consultado (el usuario ha pasado a otro elemento), la respuesta se
+    descarta en silencio. ``al_acabar(vigente)`` se llama siempre al terminar.
+    """
+    consultado = isbn.validar(texto)
+    if consultado is None:
         comun.error(padre, "El ISBN no es válido. Revisa las cifras (10 o 13, la última puede ser X).")
         return False
     ajustes = configuracion.cargar()
@@ -20,8 +27,14 @@ def consultar(padre: QWidget, texto: str, al_encontrar: Callable[[DatosLibro], N
         comun.aviso(padre, "La consulta por Internet está desactivada en Archivo › Preferencias.")
         return False
 
+    def vigente() -> bool:
+        return texto_actual is None or isbn.validar(texto_actual()) == consultado
+
     def terminado(datos: DatosLibro | None):
-        al_acabar()
+        sigue = vigente()
+        al_acabar(sigue)
+        if not sigue:
+            return
         if datos is None:
             comun.aviso(padre, "No se ha encontrado este ISBN en las fuentes consultadas.\n"
                                "Puedes rellenar los datos a mano.")
@@ -29,7 +42,10 @@ def consultar(padre: QWidget, texto: str, al_encontrar: Callable[[DatosLibro], N
             al_encontrar(datos)
 
     def fallido(error: Exception):
-        al_acabar()
+        sigue = vigente()
+        al_acabar(sigue)
+        if not sigue:
+            return
         if isinstance(error, (ErrorConsulta, ValueError)):
             comun.aviso(padre, f"{error}\nPuedes rellenar los datos a mano.")
         else:
