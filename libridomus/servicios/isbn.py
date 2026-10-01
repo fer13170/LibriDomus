@@ -261,6 +261,60 @@ def portada_open_library(isbn: str) -> bytes | None:
         return None
 
 
+def _portada_google_por_titulo(titulo: str, autor: str, clave: str) -> bytes | None:
+    consulta = f'intitle:"{titulo}"' + (f' inauthor:"{autor}"' if autor else "")
+    parametros = urllib.parse.urlencode({"q": consulta, "key": clave, "maxResults": "5", "printType": "books"})
+    respuesta = _json(f"https://www.googleapis.com/books/v1/volumes?{parametros}") or {}
+    for elemento in _lista(respuesta.get("items")):
+        imagen = _texto(_dic(_dic(_dic(elemento).get("volumeInfo")).get("imageLinks")).get("thumbnail"))
+        if imagen.startswith(("http://", "https://")):
+            return descargar(imagen.replace("http://", "https://", 1))
+    return None
+
+
+def _portada_open_library_por_titulo(titulo: str, autor: str) -> bytes | None:
+    parametros = {"title": titulo, "fields": "cover_i,language", "limit": "10"}
+    if autor:
+        parametros["author"] = autor
+    respuesta = _json("https://openlibrary.org/search.json?" + urllib.parse.urlencode(parametros)) or {}
+    documentos = [_dic(d) for d in _lista(respuesta.get("docs"))]
+    con_portada = [d for d in documentos if isinstance(d.get("cover_i"), int) and d.get("cover_i") > 0]
+    # Mejor una edición en castellano si la hay (la colección es sobre todo en español).
+    con_portada.sort(key=lambda d: "spa" not in _lista(d.get("language")))
+    if not con_portada:
+        return None
+    return descargar(f"https://covers.openlibrary.org/b/id/{con_portada[0]['cover_i']}-L.jpg")
+
+
+def buscar_portada(titulo: str, autores: list[str] | None = None, clave_google: str = "") -> bytes | None:
+    """Portada buscada por título y autor (cuando el ISBN no la trae o no hay ISBN).
+
+    Puede ser la de otra edición del mismo libro. None si no se encuentra; ErrorConsulta si no
+    hay conexión con ninguna de las fuentes.
+    """
+    titulo = " ".join((titulo or "").split())[:150]
+    autor = " ".join((autores or [""])[0].split())[:100] if autores else ""
+    if not titulo:
+        return None
+    busquedas = [lambda: _portada_open_library_por_titulo(titulo, autor)]
+    if clave_google.strip():  # Google tiene muchas más portadas de libros españoles
+        busquedas.insert(0, lambda: _portada_google_por_titulo(titulo, autor, clave_google.strip()))
+    errores = 0
+    for busqueda in busquedas:
+        try:
+            imagen = busqueda()
+        except ErrorConsulta:
+            errores += 1
+            continue
+        except (TypeError, AttributeError, KeyError, IndexError, ValueError):
+            continue
+        if imagen:
+            return imagen
+    if errores == len(busquedas):
+        raise ErrorConsulta("No hay conexión a Internet o el servicio no responde.")
+    return None
+
+
 def orden_fuentes(isbn: str, clave_google: str = "") -> list[tuple[str, object]]:
     """Fuentes a consultar, de la más a la menos probable según el país del ISBN.
 
@@ -350,4 +404,11 @@ def consultar(texto_isbn: str, clave_google: str = "") -> DatosLibro | None:
             google = None
         if google is not None and google.portada:
             fusionar(resultado, google)
+    if resultado.portada is None:
+        # Último intento: por título y autor (puede ser la portada de otra edición).
+        try:
+            resultado.portada = buscar_portada(resultado.titulo, resultado.autores, clave_google)
+        except ErrorConsulta:
+            resultado.portada = None
+        resultado.portada_por_titulo = resultado.portada is not None
     return resultado

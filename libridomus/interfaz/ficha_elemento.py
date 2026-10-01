@@ -213,6 +213,7 @@ class FichaElemento(QDialog):
         general.addRow("Conservación", fila)
         general.addRow("Etiquetas", self.etiquetas)
         self.portada = PanelPortada()
+        self.portada.permitir_busqueda(lambda: (self.titulo.text(), [n for n, _ in self.personas.valor()]))
         caja_general = QHBoxLayout()
         caja_general.addLayout(general, 1)
         caja_general.addWidget(self.portada)

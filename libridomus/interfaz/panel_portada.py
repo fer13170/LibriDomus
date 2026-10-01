@@ -4,11 +4,13 @@ El panel guarda la imagen en datos/portadas en cuanto se elige, pero recuerda cu
 nuevas: si la ficha se cancela, ``descartar_nuevas`` las borra para no dejar basura.
 """
 
+from collections.abc import Callable
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QGuiApplication, QImage, QPixmap
 from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-from ..servicios import portadas
+from ..servicios import configuracion, isbn, portadas
 from ..servicios.portadas import ErrorPortada
 from . import comun
 
@@ -41,6 +43,12 @@ class PanelPortada(QWidget):
         capa.setContentsMargins(0, 0, 0, 0)
         capa.addWidget(self.vista, alignment=Qt.AlignmentFlag.AlignHCenter)
         capa.addLayout(botones)
+        self.b_buscar = comun.boton("Buscar en Internet", "search", "enlace")
+        self.b_buscar.setToolTip("Busca una portada por el título y el autor (puede ser de otra edición)")
+        self.b_buscar.setVisible(False)
+        self.b_buscar.clicked.connect(self.buscar)
+        self.datos_busqueda: Callable[[], tuple[str, list[str]]] | None = None
+        capa.addWidget(self.b_buscar, alignment=Qt.AlignmentFlag.AlignHCenter)
         capa.addStretch()
         self.setAcceptDrops(True)
         self.b_elegir.clicked.connect(self.elegir)
@@ -85,6 +93,43 @@ class PanelPortada(QWidget):
         self.nuevas.clear()
 
     # ------------------------------------------------------------ acciones
+
+    def permitir_busqueda(self, datos: Callable[[], tuple[str, list[str]]]) -> None:
+        """Activa «Buscar en Internet». ``datos`` devuelve el título y los autores de la ficha."""
+        self.datos_busqueda = datos
+        self.b_buscar.setVisible(True)
+
+    def buscar(self) -> bool:
+        titulo, autores = self.datos_busqueda() if self.datos_busqueda else ("", [])
+        if not titulo.strip():
+            comun.aviso(self, "Escribe primero el título (y si puedes, el autor) para buscar su portada.")
+            return False
+        ajustes = configuracion.cargar()
+        if not ajustes["consultar_isbn"]:
+            comun.aviso(self, "La consulta por Internet está desactivada en Archivo › Preferencias.")
+            return False
+        self.b_buscar.setEnabled(False)
+        self.b_buscar.setText("Buscando…")
+
+        def acabar():
+            self.b_buscar.setEnabled(True)
+            self.b_buscar.setText("Buscar en Internet")
+
+        def encontrada(imagen):
+            acabar()
+            if imagen:
+                self.poner_bytes(imagen)
+            else:
+                comun.aviso(self, f"No se ha encontrado ninguna portada para «{titulo.strip()}».\n"
+                                  "Puedes hacerle una foto y pegarla.")
+
+        def fallida(error: Exception):
+            acabar()
+            comun.aviso(self, f"No se ha podido buscar la portada: {error}")
+
+        comun.en_segundo_plano(lambda: isbn.buscar_portada(titulo, autores, ajustes["clave_google_books"]),
+                               encontrada, fallida)
+        return True
 
     def elegir(self) -> None:
         archivo, _ = QFileDialog.getOpenFileName(self, "Elegir imagen de portada", "", FILTRO_IMAGENES)
