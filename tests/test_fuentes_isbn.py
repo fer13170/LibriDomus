@@ -186,6 +186,20 @@ def test_se_completa_con_la_siguiente_fuente_y_se_busca_portada(internet):
     assert not any("bnf.fr" in u for u in pedidas)  # ya estaba completo: no hace falta seguir
 
 
+def test_con_clave_de_google_se_pide_la_portada_que_falta(internet):
+    respuestas, pedidas = internet
+    agencia(respuestas)  # la Agencia lo tiene completo, pero sin portada
+    respuestas["https://www.googleapis.com/books/v1/volumes"] = json.dumps({"items": [{"volumeInfo": {
+        "title": "El canto del cisne", "imageLinks": {"thumbnail": "http://books.google.com/portada"}}}]}).encode()
+    respuestas["https://books.google.com/portada"] = b"JPEG"
+    d = isbn.consultar("9788401039928", "CLAVE")
+    assert (d.titulo, d.editorial, d.portada) == ("El canto del cisne", "Plaza & Janés", b"JPEG")
+    assert d.fuente == "Agencia del ISBN + Google Books"
+    assert not any("bne.es" in u for u in pedidas)  # los datos ya estaban completos
+    respuestas.pop("https://www.googleapis.com/books/v1/volumes")
+    assert isbn.consultar("9788401039928").portada is None  # sin clave no se pregunta a Google
+
+
 def test_una_fuente_caida_no_impide_las_demas(internet):
     respuestas, _ = internet
     respuestas[catalogos.AGENCIA] = isbn.ErrorConsulta("caída")

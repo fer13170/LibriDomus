@@ -193,7 +193,7 @@ Como ejemplo, un campo «precio», tras la migración anterior:
 | 978-2 y 979-10 (países francófonos) | BnF › Open Library › (Google Books) › Agencia › BNE |
 | El resto | Open Library › (Google Books) › Agencia › BNE › BnF |
 
-Google Books solo entra si hay clave. Se para en cuanto el libro tiene **título, autor, editorial y año**; si a la primera fuente le falta algo, lo completan las siguientes (`fusionar`, que nunca pisa un dato ya encontrado). Si al final no hay portada, se pide a Open Library por ISBN. Una fuente caída no impide consultar las demás; solo si fallan todas se muestra «no hay conexión». Límite total: 30 s.
+Google Books solo entra si hay clave. Se para en cuanto el libro tiene **título, autor, editorial y año**; si a la primera fuente le falta algo, lo completan las siguientes (`fusionar`, que nunca pisa un dato ya encontrado). Si al final no hay portada, se pide a Open Library por ISBN y, si hay clave, a Google Books (los catálogos españoles no tienen portadas). Una fuente caída no impide consultar las demás; solo si fallan todas se muestra «no hay conexión». Límite total: 30 s.
 
 | Fuente | Dónde | Formato | Notas |
 |---|---|---|---|

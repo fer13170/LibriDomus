@@ -337,4 +337,12 @@ def consultar(texto_isbn: str, clave_google: str = "") -> DatosLibro | None:
         return None
     if resultado.portada is None and "Open Library" not in resultado.fuente:
         resultado.portada = portada_open_library(isbn)
+    if resultado.portada is None and clave_google.strip() and "Google Books" not in resultado.fuente:
+        # Los catálogos españoles no tienen portadas: con clave, se le piden a Google.
+        try:
+            google = consultar_google_books(isbn, clave_google.strip())
+        except (ErrorConsulta, TypeError, AttributeError, KeyError, IndexError, ValueError):
+            google = None
+        if google is not None and google.portada:
+            fusionar(resultado, google)
     return resultado
