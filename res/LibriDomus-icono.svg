@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Icono de LibriDomus (vectorial). Redibujo del logotipo original que está en la carpeta res:
+     una casa con cuatro libros en una balda y una planta. Lo usa build/generar_icono.py. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 100 100">
+  <!-- chimenea -->
+  <rect x="68" y="14" width="9" height="20" rx="1.5" fill="#D9A456"/>
+  <!-- casa: tejado y paredes -->
+  <path d="M17 82 V45 L50 17 L83 45 V82" fill="none" stroke="#D9A456" stroke-width="9"
+        stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- libros -->
+  <rect x="27" y="50" width="8" height="30" rx="1.2" fill="#2A7070"/>
+  <rect x="37" y="45" width="8" height="35" rx="1.2" fill="#B06E38"/>
+  <rect x="47" y="50" width="8" height="30" rx="1.2" fill="#D05A30"/>
+  <rect x="57" y="57" width="8" height="23" rx="1.2" fill="#184848"/>
+  <!-- planta: tallo y tres hojas -->
+  <path d="M73 80 C73 72 75 64 80 57" fill="none" stroke="#174A40" stroke-width="2.4" stroke-linecap="round"/>
+  <ellipse cx="0" cy="0" rx="7.5" ry="3.3" fill="#1C5246" transform="translate(83 54) rotate(-50)"/>
+  <ellipse cx="0" cy="0" rx="6.5" ry="2.9" fill="#1C5246" transform="translate(67.5 66) rotate(28)"/>
+  <ellipse cx="0" cy="0" rx="6.5" ry="2.9" fill="#256356" transform="translate(81 71) rotate(-28)"/>
+  <!-- balda -->
+  <rect x="9" y="80" width="82" height="7" rx="2.5" fill="#8A5A2E"/>
+</svg>

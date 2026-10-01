@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Versión simplificada del icono para 16, 24 y 32 píxeles: trazos más gruesos, tres libros
+     y sin planta, para que no se convierta en una mancha borrosa en la barra de tareas. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 100 100">
+  <rect x="68" y="10" width="12" height="24" rx="2" fill="#D9A456"/>
+  <path d="M14 84 V44 L50 13 L86 44 V84" fill="none" stroke="#D9A456" stroke-width="13"
+        stroke-linejoin="round" stroke-linecap="round"/>
+  <rect x="28" y="46" width="12" height="36" rx="1.5" fill="#2A7070"/>
+  <rect x="44" y="40" width="12" height="42" rx="1.5" fill="#B06E38"/>
+  <rect x="60" y="50" width="12" height="32" rx="1.5" fill="#D05A30"/>
+  <rect x="4" y="80" width="92" height="12" rx="3" fill="#8A5A2E"/>
+</svg>

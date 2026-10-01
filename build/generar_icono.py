@@ -1,8 +1,13 @@
-"""Genera los iconos de LibriDomus a partir de res/LibriDomus---Icono.png:
+"""Genera los iconos de LibriDomus a partir de los dibujos vectoriales de la carpeta res/:
 
-- build/icono.ico                       icono del .exe (16, 24, 32, 48, 64, 128 y 256 px)
-- libridomus/recursos/icono.png         icono cuadrado de las ventanas (256 px)
-- libridomus/recursos/logo.png          el dibujo original, para «Acerca de» y la pantalla de bienvenida
+- res/LibriDomus-icono.svg           dibujo completo (casa, libros, balda y planta)
+- res/LibriDomus-icono-pequeno.svg   versión simplificada para 16, 24 y 32 px
+
+Resultado:
+- build/icono.ico                    icono del .exe y del instalador (16 a 256 px)
+- libridomus/recursos/icono.png      icono de las ventanas y de la barra (512 px)
+- libridomus/recursos/logo.png       logotipo de la pantalla de bienvenida (512 px)
+- res/LibriDomus-icono-1024.png      versión grande para usar fuera del programa
 
 Uso:  .venv\\Scripts\\python build\\generar_icono.py
 """
@@ -11,26 +16,29 @@ import struct
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QBuffer, QIODevice, QPoint, Qt
+from PySide6.QtCore import QBuffer, QIODevice, QRectF, Qt
 from PySide6.QtGui import QGuiApplication, QImage, QPainter
+from PySide6.QtSvg import QSvgRenderer
 
 RAIZ = Path(__file__).resolve().parent.parent
-ORIGEN = RAIZ / "res" / "LibriDomus---Icono.png"
-TAMANOS_ICO = [16, 24, 32, 48, 64, 128, 256]
+SVG_GRANDE = RAIZ / "res" / "LibriDomus-icono.svg"
+SVG_PEQUENO = RAIZ / "res" / "LibriDomus-icono-pequeno.svg"
+TAMANOS_ICO = [16, 20, 24, 32, 40, 48, 64, 128, 256]
+LIMITE_PEQUENO = 32  # hasta este tamaño se usa el dibujo simplificado
 
 
-def cuadrado(imagen: QImage, lado: int) -> QImage:
-    """Centra la imagen (sin deformarla) en un lienzo cuadrado transparente."""
-    lienzo = QImage(lado, lado, QImage.Format.Format_ARGB32)
-    lienzo.fill(Qt.GlobalColor.transparent)
-    margen = max(1, lado // 32)
-    escalada = imagen.scaled(lado - 2 * margen, lado - 2 * margen, Qt.AspectRatioMode.KeepAspectRatio,
-                             Qt.TransformationMode.SmoothTransformation)
-    p = QPainter(lienzo)
-    p.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-    p.drawImage(QPoint((lado - escalada.width()) // 2, (lado - escalada.height()) // 2), escalada)
+def pintar(svg: Path, lado: int) -> QImage:
+    """Dibuja el SVG en un lienzo cuadrado transparente de ``lado`` píxeles."""
+    renderizador = QSvgRenderer(str(svg))
+    if not renderizador.isValid():
+        raise ValueError(f"No se puede leer {svg}")
+    imagen = QImage(lado, lado, QImage.Format.Format_ARGB32_Premultiplied)
+    imagen.fill(Qt.GlobalColor.transparent)
+    p = QPainter(imagen)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    renderizador.render(p, QRectF(0, 0, lado, lado))
     p.end()
-    return lienzo
+    return imagen.convertToFormat(QImage.Format.Format_ARGB32)
 
 
 def png_bytes(imagen: QImage) -> bytes:
@@ -56,15 +64,14 @@ def escribir_ico(imagenes: list[QImage], destino: Path) -> None:
 
 def main() -> int:
     app = QGuiApplication(sys.argv)  # noqa: F841 - necesario para pintar
-    original = QImage(str(ORIGEN))
-    if original.isNull():
-        print(f"No se puede leer {ORIGEN}")
-        return 1
     recursos = RAIZ / "libridomus" / "recursos"
     recursos.mkdir(exist_ok=True)
-    cuadrado(original, 256).save(str(recursos / "icono.png"))
-    original.save(str(recursos / "logo.png"))
-    escribir_ico([cuadrado(original, t) for t in TAMANOS_ICO], RAIZ / "build" / "icono.ico")
+    grande = pintar(SVG_GRANDE, 512)
+    grande.save(str(recursos / "icono.png"))
+    grande.save(str(recursos / "logo.png"))
+    pintar(SVG_GRANDE, 1024).save(str(RAIZ / "res" / "LibriDomus-icono-1024.png"))
+    escribir_ico([pintar(SVG_PEQUENO if t <= LIMITE_PEQUENO else SVG_GRANDE, t) for t in TAMANOS_ICO],
+                 RAIZ / "build" / "icono.ico")
     print("Iconos generados.")
     return 0
 
