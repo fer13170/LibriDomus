@@ -1,15 +1,19 @@
 """Validación de ISBN y consulta opcional de datos por Internet.
 
-Fuentes (ver docs/Fase0_informe.md):
-  1. Open Library: https://openlibrary.org/isbn/{isbn}.json (registro de la edición)
-     y /authors/{clave}.json para los nombres de los autores. No requiere clave.
-  2. Google Books, solo si se ha configurado una clave propia (sin clave la cuota
-     compartida suele estar agotada y responde 429).
-Si no hay conexión se lanza ErrorConsulta y el usuario sigue rellenando a mano.
+Fuentes, todas gratuitas (las de los catálogos nacionales están en catalogos.py):
+  - Agencia Española del ISBN: todos los libros con ISBN español, también los recién salidos.
+  - Biblioteca Nacional de España (BNE) y Bibliothèque nationale de France (BnF).
+  - Open Library: https://openlibrary.org/isbn/{isbn}.json y /authors/{clave}.json.
+    Es la que más libros en otros idiomas tiene y la única que da portadas.
+  - Google Books, solo con una clave propia (sin clave responde 429: cuota agotada).
+El orden depende del país del ISBN (ver ``orden_fuentes``). Los datos que le falten a una
+fuente se completan con las siguientes. Si no hay conexión se lanza ErrorConsulta y el
+usuario sigue rellenando a mano.
 """
 
 import json
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -45,6 +49,7 @@ class DatosLibro:
     idioma: str = ""
     portada: bytes | None = None
     fuente: str = ""
+    traductores: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------- validación
@@ -100,17 +105,24 @@ class _SoloHttps(urllib.request.HTTPRedirectHandler):
 _ABRIDOR = urllib.request.build_opener(_SoloHttps)
 
 
-def descargar(url: str, limite: int = TAMANO_MAXIMO) -> bytes | None:
-    """GET de una URL HTTPS. Devuelve None si el recurso no existe (404).
+def descargar(url: str, limite: int = TAMANO_MAXIMO, datos: bytes | None = None,
+              sesion=None) -> bytes | None:
+    """GET (o POST si se pasan ``datos``) de una URL HTTPS. Devuelve None si no existe (404).
 
+    ``sesion`` es un http.cookiejar.CookieJar para las webs que necesitan cookies.
     Rechaza direcciones y redirecciones que no sean HTTPS y respuestas de más de ``limite`` bytes.
     Las pruebas sustituyen esta función para no depender de Internet.
     """
     if urllib.parse.urlparse(url).scheme != "https":
         raise ErrorConsulta("Solo se consultan direcciones seguras (https).")
-    peticion = urllib.request.Request(url, headers={"User-Agent": AGENTE})
+    cabeceras = {"User-Agent": AGENTE}
+    if datos is not None:
+        cabeceras["Content-Type"] = "application/x-www-form-urlencoded"
+    peticion = urllib.request.Request(url, data=datos, headers=cabeceras)
+    abridor = _ABRIDOR if sesion is None else urllib.request.build_opener(
+        _SoloHttps, urllib.request.HTTPCookieProcessor(sesion))
     try:
-        with _ABRIDOR.open(peticion, timeout=TIEMPO_MAXIMO) as respuesta:
+        with abridor.open(peticion, timeout=TIEMPO_MAXIMO) as respuesta:
             datos = respuesta.read(limite + 1)
     except urllib.error.HTTPError as error:
         if error.code == 404:
@@ -169,6 +181,15 @@ def consultar_open_library(isbn: str) -> DatosLibro | None:
     datos = DatosLibro(isbn=isbn, fuente="Open Library")
     datos.titulo = _texto(edicion.get("title"))
     datos.subtitulo = _texto(edicion.get("subtitle"))
+    obras = [_texto(_dic(o).get("key")) for o in _lista(edicion.get("works"))]
+    obras = [o for o in obras if _CLAVE_OBRA.match(o)]
+    obra = None
+    if len(datos.titulo) < 4 and obras:
+        # Open Library la edita cualquiera y hay fichas estropeadas (p. ej. el ISBN 9781593276034
+        # tenía por título «lol»). Un título tan corto se contrasta con el de la obra.
+        obra = _json(f"https://openlibrary.org{obras[0]}.json") or {}
+        if len(_texto(obra.get("title"))) > len(datos.titulo):
+            datos.titulo, datos.subtitulo = _texto(obra.get("title")), _texto(obra.get("subtitle"))
     editoriales = [_texto(e) for e in _lista(edicion.get("publishers")) if _texto(e)]
     datos.editorial = editoriales[0] if editoriales else ""
     datos.anio = _anio(edicion.get("publish_date"))
@@ -182,10 +203,8 @@ def consultar_open_library(isbn: str) -> DatosLibro | None:
     # Solo claves con la forma esperada: así nunca se construye una dirección extraña.
     claves = [_texto(_dic(a).get("key")) for a in _lista(edicion.get("authors"))]
     claves = [c for c in claves if _CLAVE_AUTOR.match(c)]
-    obras = [_texto(_dic(o).get("key")) for o in _lista(edicion.get("works"))]
-    obras = [o for o in obras if _CLAVE_OBRA.match(o)]
     if not claves and obras:
-        obra = _json(f"https://openlibrary.org{obras[0]}.json") or {}
+        obra = obra if obra is not None else (_json(f"https://openlibrary.org{obras[0]}.json") or {})
         claves = [_texto(_dic(_dic(a).get("author")).get("key")) for a in _lista(obra.get("authors"))]
         claves = [c for c in claves if _CLAVE_AUTOR.match(c)]
     for clave in claves[:6]:
@@ -230,16 +249,92 @@ def consultar_google_books(isbn: str, clave: str) -> DatosLibro | None:
     return datos if datos.titulo else None
 
 
+def portada_open_library(isbn: str) -> bytes | None:
+    """Portada por ISBN aunque Open Library no tenga la ficha del libro (None si no hay)."""
+    try:
+        return descargar(f"https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg?default=false")
+    except ErrorConsulta:
+        return None
+
+
+def orden_fuentes(isbn: str, clave_google: str = "") -> list[tuple[str, object]]:
+    """Fuentes a consultar, de la más a la menos probable según el país del ISBN.
+
+    978-84 y 979-13 son ISBN españoles; 978-2 y 979-10, de editoriales francófonas.
+    Las demás fuentes se consultan después por si acaso (un libro en castellano puede
+    estar editado en otro país y tenerlo la BNE, por ejemplo).
+    """
+    from . import catalogos
+
+    espanolas = [("Agencia del ISBN", catalogos.consultar_agencia), ("BNE", catalogos.consultar_bne)]
+    francesa = [("BnF", catalogos.consultar_bnf)]
+    open_library = [("Open Library", consultar_open_library)]
+    if isbn.startswith(("97884", "97913")):
+        orden = espanolas + open_library + francesa
+    elif isbn.startswith(("9782", "97910")):
+        orden = francesa + open_library + espanolas
+    else:
+        orden = open_library + espanolas + francesa
+    if clave_google.strip():  # justo después de Open Library
+        orden.insert(orden.index(open_library[0]) + 1,
+                     ("Google Books", lambda c: consultar_google_books(c, clave_google.strip())))
+    return orden
+
+
+CAMPOS_FUSION = ("subtitulo", "editorial", "anio", "paginas", "idioma", "portada")
+TIEMPO_TOTAL = 30  # segundos: con la red muy lenta no se encadenan más fuentes que esto
+
+
+def completo(datos: DatosLibro) -> bool:
+    return bool(datos.titulo and datos.autores and datos.editorial and datos.anio)
+
+
+def fusionar(base: DatosLibro, otro: DatosLibro) -> None:
+    """Rellena lo que le falta a ``base`` con lo de ``otro`` (sin pisar nada)."""
+    for campo in CAMPOS_FUSION:
+        if not getattr(base, campo) and getattr(otro, campo):
+            setattr(base, campo, getattr(otro, campo))
+    if not base.autores and otro.autores:
+        base.autores = list(otro.autores)
+    if not base.traductores and otro.traductores:
+        base.traductores = list(otro.traductores)
+    if otro.fuente and otro.fuente not in base.fuente:
+        base.fuente += f" + {otro.fuente}"
+
+
 def consultar(texto_isbn: str, clave_google: str = "") -> DatosLibro | None:
     """Busca los datos de un ISBN. None si no se encuentra; ErrorConsulta si no se pudo consultar."""
     isbn = validar(texto_isbn)
     if isbn is None:
         raise ValueError("El ISBN no es válido (revisa las cifras).")
-    try:
-        datos = consultar_open_library(isbn)
-        if datos is None and clave_google.strip():
-            datos = consultar_google_books(isbn, clave_google.strip())
-    except (TypeError, AttributeError, KeyError, IndexError, ValueError) as error:
-        # Última red de seguridad ante una respuesta con una forma que no se ha previsto.
-        raise ErrorConsulta("El servicio ha devuelto datos no válidos.") from error
-    return datos
+    resultado: DatosLibro | None = None
+    errores: list[ErrorConsulta] = []
+    inicio = time.monotonic()
+    fuentes = orden_fuentes(isbn, clave_google)
+    for _nombre, fuente in fuentes:
+        if resultado is not None and completo(resultado):
+            break
+        if time.monotonic() - inicio > TIEMPO_TOTAL:
+            break
+        try:
+            datos = fuente(isbn)
+        except ErrorConsulta as error:
+            errores.append(error)  # una fuente caída no impide probar las demás
+            continue
+        except (TypeError, AttributeError, KeyError, IndexError, ValueError):
+            # Última red de seguridad ante una respuesta con una forma que no se ha previsto.
+            errores.append(ErrorConsulta("Un servicio ha devuelto datos no válidos."))
+            continue
+        if datos is None or not datos.titulo:
+            continue
+        if resultado is None:
+            resultado = datos
+        else:
+            fusionar(resultado, datos)
+    if resultado is None:
+        if errores and len(errores) == len(fuentes):
+            raise errores[0]  # ninguna fuente ha respondido: probablemente no hay conexión
+        return None
+    if resultado.portada is None and "Open Library" not in resultado.fuente:
+        resultado.portada = portada_open_library(isbn)
+    return resultado

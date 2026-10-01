@@ -94,8 +94,8 @@ Además del instalador se genera `LibriDomus-X.Y.Z.zip`. Se descomprime en una c
 
 ### Opciones que no aparecen en el manual de usuario
 
-- **Clave de Google Books** (*Preferencias › ISBN*): segunda fuente cuando Open Library no encuentra un libro. Sin clave propia, Google suele rechazar las consultas.
-- **Open Library** encontró aproximadamente la mitad de los ISBN españoles probados; faltan sobre todo libros recientes y de editoriales pequeñas.
+- **Clave de Google Books** (*Preferencias › ISBN*): fuente adicional, que se consulta justo después de Open Library. Sin clave propia, Google rechaza las consultas (responde 429). Se consigue gratis en la consola de Google Cloud (API «Books») y es la mejor opción para encontrar **portadas** de libros españoles recientes y libros en inglés que no estén en Open Library.
+- **Cobertura medida el 01/10/2026** con 13 ISBN reales (9 españoles): solo Open Library encontraba 4; con los catálogos nacionales se encuentran 9. Los españoles que faltan son muy recientes o estuches (varios libros en una caja).
 
 ---
 
@@ -119,7 +119,8 @@ libridomus\
     elementos.py               ← libros, discos… (alta, cambios, préstamos)
   servicios\                   ← lógica sin ventanas
     busqueda.py                ← índice FTS5 y filtros
-    isbn.py                    ← validar ISBN y consultar Open Library / Google Books
+    isbn.py                    ← validar ISBN, orden de las fuentes y combinación de datos; Open Library y Google Books
+    catalogos.py               ← Agencia Española del ISBN, Biblioteca Nacional de España y BnF
     portadas.py                ← guardar y limpiar imágenes
     etiquetas.py               ← PDF de etiquetas con QR
     informes.py                ← PDF de inventario, prestados, búsquedas y manual
@@ -182,13 +183,33 @@ Como ejemplo, un campo «precio», tras la migración anterior:
 3. Si debe poder buscarse, añádelo al texto que indexa `servicios\busqueda.py → reindexar`.
 4. Prueba y empaqueta.
 
-### 4.4 Si cambia la API de Open Library
+### 4.4 Fuentes de datos por ISBN (versión 1.3.1)
 
-Toda la consulta está en `servicios\isbn.py`. En la Fase 0 se comprobó que el endpoint antiguo `api/books` ya devolvía 404 (ver `docs\Fase0_informe.md`). Si deja de funcionar:
+`isbn.consultar` pregunta a varias fuentes gratuitas, en un orden que depende del país del ISBN (`orden_fuentes`):
 
-1. Prueba a mano en el navegador: `https://openlibrary.org/isbn/9788483468463.json`.
-2. Ajusta `consultar_open_library`.
-3. Las pruebas de `tests\test_fase3.py` simulan las respuestas: actualízalas al nuevo formato.
+| ISBN | Orden |
+|---|---|
+| 978-84 y 979-13 (España) | Agencia del ISBN › BNE › Open Library › (Google Books) › BnF |
+| 978-2 y 979-10 (países francófonos) | BnF › Open Library › (Google Books) › Agencia › BNE |
+| El resto | Open Library › (Google Books) › Agencia › BNE › BnF |
+
+Google Books solo entra si hay clave. Se para en cuanto el libro tiene **título, autor, editorial y año**; si a la primera fuente le falta algo, lo completan las siguientes (`fusionar`, que nunca pisa un dato ya encontrado). Si al final no hay portada, se pide a Open Library por ISBN. Una fuente caída no impide consultar las demás; solo si fallan todas se muestra «no hay conexión». Límite total: 30 s.
+
+| Fuente | Dónde | Formato | Notas |
+|---|---|---|---|
+| Agencia Española del ISBN | `catalogos.consultar_agencia` | Web con formulario (HTML) | Todos los libros con ISBN español, incluso los recién salidos. Necesita sesión (cookie) y POST. **La página mezcla UTF-8 y Latin-1**: se lee con `_decodificar`. Da autores y traductores (`; tr.`). |
+| BNE | `catalogos.consultar_bne` | SRU, MARC21 | `https://catalogo.bne.es/view/sru/34BNE_INST`, índice `alma.isbn`. Los 700 sin función no se toman como autores (suelen ser ilustradores). |
+| BnF | `catalogos.consultar_bnf` | SRU, UNIMARC | `https://catalogue.bnf.fr/api/SRU`, índice `bib.isbn`. Función 070 = autor, 730 = traductor. |
+| Open Library | `isbn.consultar_open_library` | JSON | La edita cualquiera: un título de menos de 4 letras se contrasta con el de la obra (el ISBN 9781593276034 tenía por título «lol»). |
+| Google Books | `isbn.consultar_google_books` | JSON | Solo con clave. |
+
+Si una fuente cambia de formato:
+
+1. Prueba a mano la consulta en el navegador (las direcciones están en `catalogos.py` e `isbn.py`).
+2. Ajusta la función de lectura correspondiente (`leer_ficha_agencia`, `leer_marc21`, `leer_unimarc`…).
+3. Actualiza las respuestas de ejemplo de `tests\test_fuentes_isbn.py` (y `tests\test_fase3.py` para Open Library).
+
+La Agencia no tiene API: si cambia su web habrá que retocar `leer_ficha_agencia`. Mientras tanto, el resto de fuentes sigue funcionando.
 
 
 ### 4.5 Cambiar colores, tamaños o iconos
@@ -233,7 +254,7 @@ Surgen de las pruebas de `docs/Informe_robustez.md`. Respétalas al tocar el có
 - **Texto del usuario en la interfaz:** siempre como **texto plano** (`setTextFormat(Qt.PlainText)`; los cuadros de `comun.error/aviso/confirmar` ya lo hacen). Solo se usa HTML en textos que construye el programa, escapando los datos con `html.escape`.
 - **Preferencias:** cada ajuste nuevo de `config.json` necesita su entrada en `POR_DEFECTO` **y** en `VALIDADORES` (`servicios/configuracion.py`). Un valor inválido nunca debe impedir arrancar.
 - **Copias:** al restaurar se exige exactamente el esquema de la versión de la copia. Ese esquema de referencia se construye ejecutando `esquema.MIGRACIONES`, así que una migración nueva queda cubierta sin tocar `copias.py`. Se rechazan disparadores, vistas y tablas desconocidas. Del ZIP solo se extraen `biblioteca.db`, `config.json` y `portadas/*.jpg`, con límites de tamaño y de espacio libre.
-- **Red:** `isbn.descargar()` solo admite HTTPS (también en las redirecciones) y como máximo 5 MB por respuesta. Lee las respuestas con `_texto()`, `_lista()` y `_dic()`: nunca des por hecho el tipo de un dato recibido.
+- **Red:** `isbn.descargar()` solo admite HTTPS (también en las redirecciones) y como máximo 5 MB por respuesta. Todas las fuentes (también `catalogos.py`) descargan con esa función. Lee las respuestas con `_texto()`, `_lista()` y `_dic()`: nunca des por hecho el tipo de un dato recibido.
 - **Instancia única:** `datos\libridomus.lock` (QLockFile). Si el programa se cierra de golpe, el bloqueo se libera solo, porque Qt comprueba si el proceso que lo creó sigue vivo.
 - **Arranque:** se ejecuta `PRAGMA quick_check` (≈0,5 s con 100.000 elementos). Si falla, se ofrece restaurar la última copia automática válida. El archivo dañado se aparta como `biblioteca_danada_AAAAMMDD_HHMMSS.db`, nunca se borra.
 - **Pruebas de robustez:** `tests\robustez\` contiene scripts largos que no forman parte de `pytest`. Ejecútalos tras cambios importantes:

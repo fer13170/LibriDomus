@@ -133,7 +133,7 @@ def respuestas_diferidas(monkeypatch):
     monkeypatch.setattr(comun, "en_segundo_plano", lambda f, ok, ko: pendientes.append((f, ok, ko)))
     respuestas = {
         "https://openlibrary.org/isbn/9788483468463.json": json.dumps({"title": "Gomorra"}).encode()}
-    monkeypatch.setattr(isbn, "descargar", lambda url: respuestas.get(url))
+    monkeypatch.setattr(isbn, "descargar", lambda url, **_: respuestas.get(url))
 
     def resolver():
         for f, ok, _ko in pendientes:

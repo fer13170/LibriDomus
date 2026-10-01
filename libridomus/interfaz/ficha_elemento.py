@@ -492,8 +492,12 @@ class FichaElemento(QDialog):
         rellenar(self.titulo, datos.titulo)
         rellenar(self.subtitulo, datos.subtitulo)
         if datos.autores and not self.personas.valor():
-            rol = self.tipo_actual().roles[0] if self.tipo_actual().roles else ""
-            self.personas.establecer([(a, rol) for a in datos.autores])
+            roles = self.tipo_actual().roles
+            personas = [(a, roles[0] if roles else "") for a in datos.autores]
+            traductor = next((r for r in roles if r.casefold() == "traductor"), None)
+            if traductor:  # los catálogos españoles indican también quién lo ha traducido
+                personas += [(t, traductor) for t in datos.traductores]
+            self.personas.establecer(personas)
         if datos.anio and not self.anio.value():
             self.anio.setValue(datos.anio)
         if datos.idioma and not self.idioma.currentText().strip():

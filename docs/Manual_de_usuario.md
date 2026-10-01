@@ -145,7 +145,7 @@ Pulsa **Alta masiva**. Es la forma más rápida de apuntar una balda o una caja 
 
 Si hay varias personas, sepáralas con punto y coma: `Cristina Durán; Miguel Á. Giner`.
 
-> No todos los libros aparecen al buscar por ISBN, sobre todo los más recientes o de editoriales pequeñas. Cuando no aparece, se escribe a mano.
+> Los datos se buscan en la Agencia Española del ISBN, la Biblioteca Nacional de España, la Biblioteca Nacional de Francia y Open Library. Encuentra la mayoría de los libros editados en España, pero a veces faltan los que acaban de salir o los estuches con varios libros. Cuando no aparece, se escribe a mano. La portada no siempre está: puedes hacerle una foto y pegarla.
 
 ### 6.3 De golpe, desde una hoja de Excel
 

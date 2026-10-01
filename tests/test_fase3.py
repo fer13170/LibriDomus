@@ -62,7 +62,7 @@ RESPUESTAS = {
 def internet_simulado(monkeypatch):
     pedidas = []
 
-    def descargar(url):
+    def descargar(url, **_opciones):
         pedidas.append(url)
         if url.startswith("https://covers.openlibrary.org/b/id/123"):
             return imagen_png(300, 450)
@@ -107,7 +107,7 @@ def test_consulta_no_encontrado_y_google_solo_con_clave(internet_simulado, monke
 
 
 def test_sin_conexion_da_error_comprensible(monkeypatch):
-    def sin_red(url):
+    def sin_red(url, **_opciones):
         raise isbn.ErrorConsulta("No hay conexión a Internet o el servicio no responde.")
     monkeypatch.setattr(isbn, "descargar", sin_red)
     with pytest.raises(isbn.ErrorConsulta):

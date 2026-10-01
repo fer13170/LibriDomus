@@ -379,7 +379,7 @@ def test_isbn_limita_el_tamano_de_la_respuesta(monkeypatch):
 def test_isbn_respuestas_malformadas_no_rompen_nada(monkeypatch, respuesta):
     pedidas = []
     monkeypatch.setattr(isbn, "descargar",
-                        lambda url: pedidas.append(url) or (json.dumps(respuesta).encode() if "isbn/" in url else None))
+                        lambda url, **_: pedidas.append(url) or (json.dumps(respuesta).encode() if "isbn/" in url else None))
     try:
         datos = isbn.consultar("9788483468463")
     except isbn.ErrorConsulta:
