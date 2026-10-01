@@ -74,6 +74,9 @@ class AltaMasiva(QDialog):
         variables.addRow("Año:", self.anio)
         variables.addRow("Etiquetas:", self.etiquetas)
         variables.addRow("Conservación:", self.estado)
+        if not configuracion.modo_avanzado():  # modo sencillo: lo justo para ir rápido
+            for w in (self.etiquetas, self.estado):
+                variables.setRowVisible(w, False)
         self.form_variables = variables
         self.boton_guardar = QPushButton("Guardar y siguiente  (Intro)")
         self.boton_guardar.setDefault(True)

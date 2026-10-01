@@ -11,6 +11,7 @@ from .. import rutas
 
 ESCALAS_VALIDAS = (0.9, 1.0, 1.15, 1.3, 1.5)
 NUM_COLUMNAS = 7  # columnas de la lista de la ventana principal
+MODOS = ("sencillo", "avanzado")
 
 POR_DEFECTO = {
     "consultar_isbn": True,          # permitir consultas por Internet al autocompletar
@@ -24,6 +25,7 @@ POR_DEFECTO = {
     "fuente": "Segoe UI",            # tipo de letra de la interfaz
     "panel_detalle": True,           # mostrar el panel de detalle a la derecha
     "columnas_ocultas": [5],         # columnas de la lista ocultas (5 = Estado)
+    "modo": "sencillo",              # 'sencillo' (menos campos y opciones) o 'avanzado' (todo)
 }
 
 
@@ -55,6 +57,10 @@ def _tema(valor):
     return valor if valor in ("claro", "oscuro", "sistema") else None
 
 
+def _modo(valor):
+    return valor if valor in MODOS else None
+
+
 def _fuente(valor):
     return valor.strip()[:80] if isinstance(valor, str) and valor.strip() else None
 
@@ -77,6 +83,7 @@ VALIDADORES = {
     "fuente": _fuente,
     "panel_detalle": _booleano,
     "columnas_ocultas": _columnas,
+    "modo": _modo,
 }
 
 
@@ -113,3 +120,8 @@ def guardar(datos: dict) -> None:
 
 def obtener(clave: str):
     return cargar()[clave]
+
+
+def modo_avanzado() -> bool:
+    """True si el usuario ha elegido el modo avanzado (por defecto se usa el sencillo)."""
+    return obtener("modo") == "avanzado"

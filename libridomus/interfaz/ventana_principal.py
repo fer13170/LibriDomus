@@ -105,6 +105,7 @@ class VentanaPrincipal(QMainWindow):
 
         self._crear_barra()
         self._crear_menus()
+        self._crear_selector_modo()
         self.detalle.setVisible(bool(configuracion.obtener("panel_detalle")))
         self.acc_panel.setChecked(self.detalle.isVisible())
 
@@ -125,6 +126,7 @@ class VentanaPrincipal(QMainWindow):
         tema.avisador.cambiado.connect(self._al_cambiar_tema)
 
         self._aplicar_iconos()
+        self.aplicar_modo(configuracion.obtener("modo"))
         self.refrescar_resultados()
 
     # ------------------------------------------------------------ construcción
@@ -180,6 +182,16 @@ class VentanaPrincipal(QMainWindow):
         self.acc_panel = A("Panel de detalle", "panel-right", lambda: self.mostrar_panel(self.acc_panel.isChecked()),
                            QKeySequence("F9"), "Mostrar u ocultar la ficha a la derecha (F9)")
         self.acc_panel.setCheckable(True)
+        # Modo sencillo / avanzado, con los mismos atajos que la calculadora de Windows.
+        self.grupo_modo = QActionGroup(self)
+        self.acciones_modo: dict[str, QAction] = {}
+        for clave, texto_, atajo, ayuda in (
+                ("sencillo", "Modo sencillo", "Alt+1", "Solo los campos y opciones básicos"),
+                ("avanzado", "Modo avanzado", "Alt+2", "Todos los campos, filtros y opciones")):
+            accion = A(texto_, "", lambda c=clave: self.cambiar_modo(c), QKeySequence(atajo), ayuda)
+            accion.setCheckable(True)
+            self.grupo_modo.addAction(accion)
+            self.acciones_modo[clave] = accion
 
     def _crear_lateral(self):
         self.arbol = ArbolUbicaciones(self.con, contar=True, especiales=True, al_mover=self._mover_ubicacion,
@@ -386,7 +398,7 @@ class VentanaPrincipal(QMainWindow):
         for accion in (self.acc_inventario, self.acc_inf_prestados, self.acc_inf_busqueda):
             menu_informes.addAction(accion)
         self.boton_informes.setMenu(menu_informes)
-        barra.addWidget(self.boton_informes)
+        self.accion_boton_informes = barra.addWidget(self.boton_informes)  # para ocultarlo en modo sencillo
         barra.addSeparator()
         self.ir_codigo = QLineEdit(placeholderText="Ir a código", clearButtonEnabled=True)
         self.ir_codigo.setToolTip("Escribe o pega el código de una etiqueta (p. ej. PB-SAL-EA-B3) y pulsa Intro")
@@ -452,6 +464,9 @@ class VentanaPrincipal(QMainWindow):
             informes_menu.addAction(accion)
 
         ver = self.menuBar().addMenu("&Ver")
+        for accion in self.acciones_modo.values():
+            ver.addAction(accion)
+        ver.addSeparator()
         grupo = QActionGroup(self)
         self.acciones_tema: dict[str, QAction] = {}
         actual = configuracion.obtener("tema")
@@ -545,6 +560,54 @@ class VentanaPrincipal(QMainWindow):
             actual = configuracion.obtener("tema")
             if actual in self.acciones_tema:
                 self.acciones_tema[actual].setChecked(True)
+            self.aplicar_modo(configuracion.obtener("modo"))
+
+    # ------------------------------------------------------------ modo sencillo / avanzado
+
+    def _crear_selector_modo(self):
+        """Botón en la esquina inferior derecha que muestra el modo actual y permite cambiarlo."""
+        self.boton_modo = QToolButton(objectName="boton_modo")
+        self.boton_modo.setAutoRaise(True)
+        self.boton_modo.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.boton_modo.setToolTip("Cambiar entre el modo sencillo y el avanzado (Alt+1 / Alt+2)")
+        menu = QMenu(self)
+        for accion in self.acciones_modo.values():
+            menu.addAction(accion)
+        self.boton_modo.setMenu(menu)
+        self.statusBar().addPermanentWidget(self.boton_modo)
+
+    def cambiar_modo(self, clave: str):
+        ajustes = configuracion.cargar()
+        ajustes["modo"] = clave
+        configuracion.guardar(ajustes)
+        self.aplicar_modo(clave)
+        self.statusBar().showMessage(
+            "Modo sencillo: se muestran solo los campos y opciones básicos." if clave == "sencillo" else
+            "Modo avanzado: se muestran todos los campos, filtros y opciones.", 6000)
+
+    def aplicar_modo(self, clave: str):
+        """El modo sencillo oculta filtros y opciones poco habituales. No cambia ningún dato:
+        todo sigue accesible desde los menús o pasando al modo avanzado."""
+        avanzado = clave == "avanzado"
+        self.modo = "avanzado" if avanzado else "sencillo"
+        self.acciones_modo[self.modo].setChecked(True)
+        self.boton_modo.setText("Modo avanzado" if avanzado else "Modo sencillo")
+        avanzados = (self.f_etiqueta, self.f_estado, self.f_idioma, self.f_pendientes)
+        if not avanzado and any([self.f_etiqueta.currentIndex() > 0, self.f_estado.currentIndex() > 0,
+                                 self.f_idioma.currentIndex() > 0, self.f_pendientes.isChecked()]):
+            # Un filtro oculto pero activo escondería resultados sin que se vea por qué.
+            for combo in (self.f_etiqueta, self.f_estado, self.f_idioma):
+                combo.blockSignals(True)
+                combo.setCurrentIndex(0)
+                combo.blockSignals(False)
+            self.f_pendientes.blockSignals(True)
+            self.f_pendientes.setChecked(False)
+            self.f_pendientes.blockSignals(False)
+            self.refrescar_resultados()
+        for w in avanzados:
+            w.setVisible(avanzado)
+        self.accion_boton_informes.setVisible(avanzado)  # los informes siguen en el menú Informes
+        self.acc_tipos.setVisible(avanzado)
 
     # ------------------------------------------------------------ datos
 

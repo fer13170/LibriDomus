@@ -46,6 +46,10 @@ class Preferencias(QDialog):
         self.fuente = QFontComboBox()
         self.fuente.setFontFilters(QFontComboBox.FontFilter.ScalableFonts)
         self.fuente.setCurrentFont(QFont(self.ajustes["fuente"] or tema.FUENTE_POR_DEFECTO))
+        self.modo = QComboBox()
+        self.modo.addItem("Sencillo: solo lo básico", "sencillo")
+        self.modo.addItem("Avanzado: todos los campos y opciones", "avanzado")
+        self.modo.setCurrentIndex(max(0, self.modo.findData(self.ajustes["modo"])))
         ayuda = QLabel("Los cambios se ven al momento. También puedes cambiar el tamaño con Ctrl + y Ctrl − "
                        "desde la ventana principal.", objectName="suave", wordWrap=True)
         pagina = QWidget()
@@ -54,6 +58,7 @@ class Preferencias(QDialog):
         formulario.addRow("Tamaño de la interfaz:", self.escala)
         formulario.addRow("", self.nombre_escala)
         formulario.addRow("Tipo de letra:", self.fuente)
+        formulario.addRow("Modo:", self.modo)
         formulario.addRow(ayuda)
         self.tema.currentIndexChanged.connect(lambda _i: self._vista_previa())
         self.escala.valueChanged.connect(lambda _v: self._vista_previa())
@@ -118,7 +123,7 @@ class Preferencias(QDialog):
         tema_, escala, fuente = self._valores_apariencia()
         ajustes = configuracion.cargar()
         ajustes.update({
-            "tema": tema_, "escala": escala, "fuente": fuente,
+            "tema": tema_, "escala": escala, "fuente": fuente, "modo": self.modo.currentData(),
             "consultar_isbn": self.consultar_isbn.isChecked(),
             "clave_google_books": self.clave_google.text().strip(),
             "copia_al_cerrar": self.copia_al_cerrar.isChecked(),

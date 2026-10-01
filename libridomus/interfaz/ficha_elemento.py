@@ -1,4 +1,9 @@
-"""Ficha de un elemento: alta y edición. El formulario se adapta al tipo elegido."""
+"""Ficha de un elemento: alta y edición. El formulario se adapta al tipo elegido.
+
+En el modo sencillo solo se ven los campos básicos (título, personas, año, identificador,
+portada, ubicación y notas). El resto aparece con «Más campos», o por sí solo si ese
+elemento ya tiene algo escrito en él: nunca se ocultan datos que existen.
+"""
 
 import sqlite3
 from datetime import date
@@ -13,6 +18,7 @@ from ..datos import elementos, tipos
 from ..datos.elementos import Elemento, ErrorElemento
 from ..datos.tipos import Campo, TipoElemento
 from ..servicios.isbn import DatosLibro
+from ..servicios import configuracion
 from . import autocompletar, comun, tema
 from .panel_portada import PanelPortada
 from .selector_ubicacion import CampoUbicacion
@@ -145,6 +151,8 @@ class FichaElemento(QDialog):
         self.tipos: list[TipoElemento] = tipos.listar(con)
         self.original: Elemento | None = elementos.obtener(con, elemento_id) if elemento_id else None
         self.editores: dict[int, EditorCampo] = {}
+        self.sencillo = not configuracion.modo_avanzado()
+        self.ver_todo = False  # «Más campos» pulsado en el modo sencillo
         self.setWindowTitle("Editar elemento" if self.original else "Nuevo elemento")
         self.resize(tema.px(800), tema.px(820))
 
@@ -174,13 +182,16 @@ class FichaElemento(QDialog):
         self.ubicacion = CampoUbicacion(con)
 
         general = QFormLayout()
+        self.form_general = general
         general.addRow("Título *", self.titulo)
         general.addRow("Subtítulo", self.subtitulo)
         general.addRow("Personas", self.personas)
         fila = QHBoxLayout()
         fila.addWidget(self.anio)
-        fila.addWidget(QLabel("  Idioma"))
+        self.rotulo_idioma = QLabel("  Idioma")
+        fila.addWidget(self.rotulo_idioma)
         fila.addWidget(self.idioma, 1)
+        fila.addStretch()
         general.addRow("Año", fila)
         self.boton_autocompletar = comun.boton("Autocompletar", "search")
         self.boton_autocompletar.setAutoDefault(False)
@@ -195,6 +206,7 @@ class FichaElemento(QDialog):
         fila.addWidget(QLabel("  Valoración"))
         fila.addWidget(self.valoracion)
         fila.addWidget(self.consumido)
+        self.fila_conservacion = fila
         general.addRow("Conservación", fila)
         general.addRow("Etiquetas", self.etiquetas)
         self.portada = PanelPortada()
@@ -249,12 +261,14 @@ class FichaElemento(QDialog):
         # --- notas
         self.notas = QPlainTextEdit()
         self.notas.setMinimumHeight(80)
+        self.notas.setMaximumHeight(tema.px(200))
         notas = QVBoxLayout()
         notas.addWidget(self.notas)
         self.grupo_notas = QGroupBox("Notas")
         self.grupo_notas.setLayout(notas)
 
         self.contenido = QVBoxLayout()
+        self.contenido.addStretch(1)  # los grupos se insertan delante: el hueco sobrante queda abajo
         cuerpo = QWidget()
         cuerpo.setLayout(self.contenido)
         desplazable = QScrollArea()
@@ -267,7 +281,11 @@ class FichaElemento(QDialog):
         self.boton_guardar.setDefault(True)
         self.boton_guardar_nuevo = QPushButton("Guardar y nuevo")
         self.boton_cancelar = QPushButton("Cancelar")
+        self.boton_mas = comun.boton("Más campos", "chevron-down", "enlace")
+        self.boton_mas.setAutoDefault(False)
+        self.boton_mas.setToolTip("Mostrar u ocultar los campos del modo avanzado en esta ficha")
         botones = QHBoxLayout()
+        botones.addWidget(self.boton_mas)
         botones.addStretch()
         botones.addWidget(self.boton_guardar_nuevo)
         botones.addWidget(self.boton_guardar)
@@ -287,6 +305,7 @@ class FichaElemento(QDialog):
         self.tipo.currentIndexChanged.connect(lambda _i: self._aplicar_tipo())
         self.boton_autocompletar.clicked.connect(self.autocompletar)
         self.boton_devuelto.clicked.connect(lambda: (self.prestado_a.clear(), self.fecha_prestamo.clear()))
+        self.boton_mas.clicked.connect(self.alternar_mas_campos)
 
         self._cargar(tipo_id, ubicacion_id)
 
@@ -310,7 +329,6 @@ class FichaElemento(QDialog):
             self.editores[campo.id] = editor
             self.form_campos.addRow(campo.etiqueta, editor.widget)
         self.grupo_campos.setTitle(f"Datos de {t.nombre.lower()}")
-        self.grupo_campos.setVisible(bool(self.editores))
         self.personas.establecer_roles(t.roles)
         self.consumido.setText(t.verbo_consumo)
         # Los tipos personales (álbumes, carpetas...) muestran primero el periodo y el lugar.
@@ -319,8 +337,57 @@ class FichaElemento(QDialog):
         orden += [self.grupo_ubicacion, self.grupo_prestamo, self.grupo_notas]
         for grupo in orden:
             self.contenido.removeWidget(grupo)
-        for grupo in orden:
-            self.contenido.addWidget(grupo)
+        for posicion, grupo in enumerate(orden):
+            self.contenido.insertWidget(posicion, grupo)
+        self._aplicar_modo()
+
+    # ------------------------------------------------------------ modo sencillo / avanzado
+
+    def _aplicar_modo(self) -> None:
+        """Muestra u oculta lo avanzado. Ocultar no borra nada: los controles siguen ahí con su valor.
+
+        Una parte avanzada se ve si: estamos en modo avanzado, se ha pulsado «Más campos»
+        o esa parte ya tiene datos (para no esconder nada de lo que se escribió).
+        """
+        completo = not self.sencillo or self.ver_todo
+        t = self.tipo_actual()
+        partes = [
+            ([self.subtitulo], bool(self.subtitulo.text().strip())),
+            ([self.rotulo_idioma, self.idioma], bool(self.idioma.currentText().strip())),
+            ([self.fila_conservacion], bool(self.estado.currentText()) or self.valoracion.currentIndex() > 0
+             or self.consumido.isChecked()),
+            ([self.etiquetas], bool(self.etiquetas.text().strip())),
+            ([self.grupo_prestamo], bool(self.prestado_a.text().strip())),
+            # En los álbumes, carpetas... el periodo y el lugar son lo principal: siempre se ven.
+            ([self.grupo_personal], t.personal or any(w.text().strip() for w in
+                                                      (self.fecha_desde, self.fecha_hasta, self.lugar_evento))),
+            ([self.grupo_campos], any(e.valor() for e in self.editores.values())),
+        ]
+        ocultos = 0
+        for widgets, con_datos in partes:
+            visible = completo or con_datos
+            ocultos += not visible
+            for w in widgets:
+                if isinstance(w, QWidget):
+                    fila = self.form_general.getWidgetPosition(w)[0]
+                else:  # una fila con varios controles
+                    fila = self.form_general.getLayoutPosition(w)[0]
+                if fila >= 0:
+                    self.form_general.setRowVisible(fila, visible)
+                else:
+                    w.setVisible(visible)
+        if not self.editores:  # tipo sin campos propios
+            self.grupo_campos.setVisible(False)
+        # El botón solo tiene sentido en el modo sencillo y si hay algo que mostrar u ocultar.
+        self.boton_mas.setVisible(self.sencillo and (self.ver_todo or ocultos > 0))
+        self.boton_mas.setText("Menos campos" if self.ver_todo else "Más campos")
+        icono = ("chevron-up" if self.ver_todo else "chevron-down", "primario")
+        self.boton_mas.setIcon(tema.icono(*icono))
+        self.boton_mas.setProperty("icono_tema", icono)
+
+    def alternar_mas_campos(self) -> None:
+        self.ver_todo = not self.ver_todo
+        self._aplicar_modo()
 
     # ------------------------------------------------------------ carga / lectura
 
@@ -335,6 +402,7 @@ class FichaElemento(QDialog):
             self.personas.establecer([])
             self.ubicacion.establecer(ubicacion_id)
             self.boton_guardar_nuevo.setVisible(True)
+            self._aplicar_modo()
             return
         self.boton_guardar_nuevo.setVisible(False)
         self.titulo.setText(e.titulo)
@@ -357,6 +425,7 @@ class FichaElemento(QDialog):
         self.fecha_prestamo.setText(e.fecha_prestamo)
         for campo_id, editor in self.editores.items():
             editor.establecer(e.valores.get(campo_id, ""))
+        self._aplicar_modo()  # ahora que hay datos, se muestran las partes que los tienen
 
     def leer(self) -> Elemento:
         """Construye un Elemento con lo que hay en pantalla."""
