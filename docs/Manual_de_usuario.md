@@ -62,8 +62,8 @@ Igual que la calculadora de Windows, LibriDomus tiene dos modos. **Empieza en el
 
 | | Modo sencillo | Modo avanzado |
 |---|---|---|
-| Ficha | Tipo, título, personas, año, ISBN, portada, sitio y notas | Además: subtítulo, idioma, estado de conservación, valoración, leído/visto, etiquetas, préstamo, fechas y lugar, y los datos propios de cada tipo (editorial, páginas, formato…) |
-| Filtros de la lista | Tipo y *Prestados* | También etiqueta, estado, idioma y *Pendientes* |
+| Ficha | Tipo, título, personas, categorías, año, ISBN, portada, sitio y notas | Además: subtítulo, idioma, estado de conservación, valoración, leído/visto, etiquetas, préstamo, fechas y lugar, y los datos propios de cada tipo (editorial, páginas, formato…) |
+| Filtros de la lista | Tipo, categoría y *Prestados* | También etiqueta, estado, idioma y *Pendientes* |
 | Alta masiva | ISBN, título, personas y año | También etiquetas y estado |
 | Barra de arriba | Sin el botón *Informes* (siguen en el menú *Informes*) | Con todo |
 
@@ -123,8 +123,9 @@ Pulsa **Nuevo**, o la flecha de al lado para elegir el tipo. Si tenías un sitio
 - **Tipo**: libro, disco, película, álbum de fotos… Cada tipo tiene sus propios datos (un libro tiene editorial y páginas; un disco, formato y canciones).
 - **Título**: es lo único obligatorio.
 - **Personas**: autores, intérpretes, directores, quién sale en las fotos… cada una con su papel. *Añadir persona* para poner más.
-- **ISBN**: el número del código de barras de los libros. Con Internet, el botón **Autocompletar** busca el título, los autores, la editorial, el año y la portada. **Solo rellena lo que está vacío**, nunca borra lo que ya has escrito.
-- **Portada**: arrastra una imagen al recuadro, usa *Elegir…*, o cópiala y pulsa *Pegar*.
+- **Categorías**: el género o la materia (*Novela histórica*, *Historia del arte*, *Humor*…). Pulsa *Elegir…* y marca una o varias (ver apartado 7).
+- **ISBN**: el número del código de barras de los libros. Con Internet, el botón **Autocompletar** busca el título, los autores, la editorial, el año, la portada y la **categoría**. **Solo rellena lo que está vacío**, nunca borra lo que ya has escrito.
+- **Portada**: arrastra una imagen al recuadro, usa *Elegir…*, o cópiala y pulsa *Pegar*. **Buscar en Internet** busca una portada por el título y el autor que hayas escrito; puede ser la de otra edición del mismo libro.
 - **Ubicación**: pulsa *Elegir…* y escoge el sitio.
 - **Notas**: cualquier cosa que quieras recordar.
 
@@ -138,14 +139,14 @@ Si ese ISBN ya está en tu colección, el programa te avisa antes de guardar, po
 
 Pulsa **Alta masiva**. Es la forma más rápida de apuntar una balda o una caja entera.
 
-1. Elige **dónde guardar** y el **tipo**. No cambian hasta que termines.
-2. En libros, discos y películas, empieza por el **ISBN**: escríbelo (o léelo con un lector de códigos de barras) y pulsa **Intro**. Si hay Internet, se rellenan el título, el autor y el año.
+1. Elige **dónde guardar**, el **tipo** y, si quieres, una **categoría** (por ejemplo, *Novela negra y suspense* si estás apuntando esa balda). No cambian hasta que termines.
+2. En libros, discos y películas, empieza por el **ISBN**: escríbelo (o léelo con un lector de códigos de barras) y pulsa **Intro**. Si hay Internet, se rellenan el título, el autor y el año, y se añade la categoría que corresponda.
 3. Completa lo que falte y pulsa **Intro**: se guarda y queda listo para el siguiente.
 4. A la derecha ves lo que llevas. *Deshacer el último* lo borra si te has equivocado.
 
 Si hay varias personas, sepáralas con punto y coma: `Cristina Durán; Miguel Á. Giner`.
 
-> Los datos se buscan en la Agencia Española del ISBN, la Biblioteca Nacional de España, la Biblioteca Nacional de Francia y Open Library. Encuentra la mayoría de los libros editados en España, pero a veces faltan los que acaban de salir o los estuches con varios libros. Cuando no aparece, se escribe a mano. La portada no siempre está: puedes hacerle una foto y pegarla.
+> Los datos se buscan en la Agencia Española del ISBN, la Biblioteca Nacional de España, la Biblioteca Nacional de Francia y Open Library. Encuentra la mayoría de los libros editados en España, pero a veces faltan los que acaban de salir o los estuches con varios libros. Cuando no aparece, se escribe a mano. Si el libro no trae portada, el programa la busca también por título y autor; si aun así no aparece, puedes hacerle una foto y pegarla.
 
 ### 6.3 De golpe, desde una hoja de Excel
 
@@ -163,6 +164,7 @@ Consejos para rellenar la hoja:
 - **Autor**: si son varios, sepáralos con punto y coma. Para indicar el papel de alguien: `Luis Gil (Traductor)`.
 - **Tipo**: escrito igual que en LibriDomus (*Libro*, *Disco*, *Película*…).
 - **Ubicación**: el **código** de la etiqueta (`PB-SAL-EA-B3`) o el camino completo (`Planta baja > Salón > Estantería A`). Crea antes esos sitios en *Casa*.
+- **Categoría** (o *Género*): una o varias separadas por comas. Si alguna no existe en LibriDomus, se añade.
 - **Etiquetas**: separadas por comas.
 - Lo que no encaje en ningún dato se guarda en las **notas**, así que no se pierde nada.
 - Si tu Excel es muy antiguo y no se puede abrir, ábrelo en Excel y usa *Guardar como › Libro de Excel*.
@@ -179,9 +181,19 @@ Escribe en el buscador y los resultados aparecen mientras escribes.
 - **Frase exacta** entre comillas: `"cien años"`.
 - **Quitar resultados** con un guion delante: `novela -policiaca`.
 
-Busca en el título, las personas, las etiquetas, las notas, el resto de datos, a quién está prestado **y el nombre del sitio**: `buhardilla` encuentra todo lo que hay en la buhardilla.
+Busca en el título, las personas, las categorías, las etiquetas, las notas, el resto de datos, a quién está prestado **y el nombre del sitio**: `buhardilla` encuentra todo lo que hay en la buhardilla.
 
 La búsqueda solo mira dentro del sitio seleccionado a la izquierda y respeta los **filtros** que hay encima de la lista. *Quitar filtros* lo deja todo como al principio.
+
+### Buscar por categoría
+
+Elige una categoría en el desplegable **Todas las categorías**, encima de la lista: solo verás lo que la tiene. También puedes escribirla en el buscador (`historia del arte`). La columna **Categoría** de la lista las muestra; si no la ves, haz clic derecho en los títulos de las columnas.
+
+### El catálogo de categorías
+
+*Catálogo › Categorías…* muestra todas, con cuántas cosas tiene cada una. Viene con las habituales de librerías y bibliotecas: novela, novela histórica, novela negra, ciencia ficción, fantasía, romántica, humor, poesía, teatro, cómic, infantil y juvenil, biografías, ensayo, historia, arte, historia del arte, filosofía, cocina, viajes… Puedes **añadir** las tuyas (por ejemplo *Jazz* para los discos), **cambiarles el nombre** o **borrarlas**. Al borrar una, solo se quita de las cosas que la tenían: no se borra nada más.
+
+Al buscar los datos de un libro por su ISBN, el programa **propone la categoría** a partir de cómo lo clasifica la editorial. Si no te convence, cámbiala en la ficha.
 
 ---
 
@@ -280,6 +292,7 @@ En el modo avanzado, menú **Catálogo › Tipos de elemento y campos…**
 | El antivirus analiza el instalador o el programa | Es normal con programas nuevos que aún no conoce: espera a que termine el análisis. Si lo bloquea, usa la opción del antivirus para permitirlo. |
 | No veo un dato o un filtro que antes estaba | Estás en el **modo sencillo**. Pulsa *Más campos* en la ficha o cambia al avanzado con **Alt+2**. |
 | No encuentra un libro por su ISBN | No todos los libros están en Internet: escribe los datos a mano. |
+| La categoría propuesta no es la que quiero | Cámbiala en la ficha con *Elegir…*. El programa no vuelve a cambiarla. |
 | Al importar no reconoce un sitio | Pon en la hoja el **código** del sitio (el de su etiqueta) y comprueba que existe en *Casa*. Lo que no reconoce queda en las notas. |
 | He borrado algo sin querer | *Archivo › Restaurar copia de seguridad…* y elige la copia anterior. |
 | Dice que LibriDomus ya está abierto | Ya tienes una ventana abierta: búscala en la barra de tareas de abajo. |

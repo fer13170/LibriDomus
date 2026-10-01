@@ -117,6 +117,7 @@ libridomus\
     ubicaciones.py             ← árbol de la casa
     tipos.py                   ← tipos de elemento y campos
     elementos.py               ← libros, discos… (alta, cambios, préstamos)
+    categorias.py              ← catálogo de categorías (géneros y materias)
   servicios\                   ← lógica sin ventanas
     busqueda.py                ← índice FTS5 y filtros
     isbn.py                    ← validar ISBN, orden de las fuentes y combinación de datos; Open Library y Google Books
@@ -126,6 +127,7 @@ libridomus\
     informes.py                ← PDF de inventario, prestados, búsquedas y manual
     copias.py                  ← copias de seguridad y restauración
     importar.py                ← leer Excel/CSV, proponer columnas e importar (con informe)
+    clasificar.py              ← proponer categorías a partir de las materias del ISBN (Thema/BIC y palabras)
     configuracion.py           ← datos\config.json (incluido el modo sencillo/avanzado)
   interfaz\                    ← ventanas (PySide6)
     aplicacion.py              ← arranque, copia al salir, tamaño de la ventana
@@ -136,6 +138,7 @@ libridomus\
     alta_masiva.py, editor_ubicaciones.py, editor_tipos.py
     arbol_ubicaciones.py, selector_ubicacion.py, modelo_resultados.py
     dialogo_etiquetas.py, dialogo_copias.py, dialogo_importar.py, preferencias.py, comun.py
+    categorias.py              ← campo de la ficha, elegir categorías y editor del catálogo
 tests\                         ← pruebas automáticas (una carpeta de datos temporal por prueba)
 build\                         ← build.ps1, instalador.iss, generar_icono.py, generar_manual.py, verificar_dependencias.py
 res\                           ← logotipo: LibriDomus-icono.svg (fuente del icono), versión simplificada
@@ -245,7 +248,22 @@ Todo está en `servicios/importar.py`; la ventana es `interfaz/dialogo_importar.
 - **Límites:** 50 MB por archivo, 200.000 filas y 10.000 caracteres por celda. Los `.xls` antiguos no se leen (se pide guardarlos como `.xlsx`). Los CSV se leen en UTF-8 o, si falla, en ANSI (cp1252, el de Excel en español); el separador se detecta solo.
 - **Rendimiento:** unas 5.000 filas en pocos segundos (prueba `test_importar_rendimiento_5000_filas`).
 
-### 4.8 Reglas de robustez (versión 1.2)
+### 4.8 Categorías (versión 1.4)
+
+- **Datos:** tablas `categoria` y `elemento_categoria` (migración 3, que también crea las 44 categorías iniciales en las bases de datos que ya existían). `Elemento.categorias` es una lista de nombres; `elementos.guardar` crea en el catálogo las que no existan (lo usa la importación).
+- **Búsqueda:** los nombres de las categorías se guardan en la columna `etiquetas` del índice FTS. Al renombrar o borrar una categoría, `datos/categorias.py` reindexa los elementos afectados. Filtro: `Filtros.categoria_id`. Columna nueva de la lista: «Categoría» (la 7).
+- **Propuesta automática** (`servicios/clasificar.py`): cada fuente deja en `DatosLibro.materias` cómo clasifica el libro.
+  - Agencia del ISBN: códigos **Thema/BIC** (`FH - Obra de misterio y suspense`), traducidos con `CODIGOS` (gana el prefijo más largo). Los que empiezan por cifra (época, lugar, edad) se ignoran.
+  - BNE (655/650), BnF (608/606), Open Library y Google Books: texto, buscado con `PALABRAS`.
+  - Solo se proponen categorías que existan en el catálogo del usuario; como mucho 3; *Novela* se quita si ya hay un género de ficción concreto.
+  - Para mejorar la propuesta, amplía `CODIGOS` o `PALABRAS`. La lista de códigos Thema está en <https://www.editeur.org/151/Thema/>.
+- **Ficha:** la propuesta solo se aplica si el usuario no ha elegido ninguna categoría. El campo se ve también en el modo sencillo.
+
+### 4.9 Portadas por título (versión 1.4)
+
+`isbn.buscar_portada(titulo, autores, clave_google)`: con clave, prueba primero Google Books (`intitle:` + `inauthor:`); después, la búsqueda de Open Library, prefiriendo ediciones en castellano. La usan `isbn.consultar` como último intento cuando ninguna fuente da portada (marca `portada_por_titulo`) y el botón **Buscar en Internet** del recuadro de la portada (`PanelPortada.buscar`, en segundo plano). Puede devolver la portada de otra edición.
+
+### 4.10 Reglas de robustez (versión 1.2)
 
 Surgen de las pruebas de `docs/Informe_robustez.md`. Respétalas al tocar el código:
 

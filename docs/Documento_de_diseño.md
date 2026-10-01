@@ -1,6 +1,6 @@
 # LibriDomus — Documento de diseño
 
-- **Versión:** 1.3 (LibriDomus)
+- **Versión:** 1.4 (LibriDomus)
 - **Fecha:** 30/09/2026
 - **Estado:** implementado (fases 0 a 5). Ver el apartado 9.
 
@@ -348,6 +348,13 @@ Peticiones del usuario tras probar la 1.2 en otro equipo:
 
 Con 13 ISBN reales probados por el usuario, Open Library solo encontraba 4. Se añaden tres catálogos públicos y gratuitos: la **Agencia Española del ISBN**, la **Biblioteca Nacional de España** y la **Bibliothèque nationale de France**. El orden de consulta depende del país del ISBN y unas fuentes completan los datos que les faltan a otras. Ahora se encuentran 9 de los 13, con traductores incluidos. También se corrige un título estropeado en Open Library («lol»). Detalles en el apartado 4.4 del manual de mantenimiento.
 - **Pruebas:** 215 automáticas.
+
+### Versión 1.4 — Categorías y portadas
+
+- **Categorías**: catálogo configurable (44 iniciales, las habituales de librerías y bibliotecas). Cada elemento puede tener varias. Se ven en la ficha (también en el modo sencillo), en el panel de detalle y en una columna nueva. Se puede filtrar y buscar por ellas, asignarlas en el alta masiva y en la importación, y gestionarlas en *Catálogo › Categorías*. Base de datos: migración 3.
+- **Categoría propuesta automáticamente** a partir de la clasificación Thema/BIC de la Agencia del ISBN y de las materias de la BNE, la BnF, Open Library y Google Books.
+- **Portadas por título y autor** cuando el ISBN no trae portada, y botón *Buscar en Internet* en la ficha.
+- **Pruebas:** 245 automáticas.
 
 ---
 

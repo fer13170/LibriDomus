@@ -4,8 +4,8 @@ Aplicación de escritorio para Windows, **sin conexión**, que registra dónde s
 
 - Catálogo de ubicaciones configurable, que se reorganiza arrastrando nodos.
 - Diez tipos de elemento predefinidos, ampliables con tipos y campos propios.
-- Búsqueda instantánea sin acentos (SQLite FTS5) y filtros.
-- Alta masiva por balda, importación desde Excel o CSV y autocompletado por ISBN (Open Library) cuando hay Internet.
+- Búsqueda instantánea sin acentos (SQLite FTS5), filtros y categorías configurables (géneros y materias).
+- Alta masiva por balda, importación desde Excel o CSV y autocompletado por ISBN (Agencia Española del ISBN, BNE, BnF y Open Library) con categoría y portada cuando hay Internet.
 - Portadas, préstamos, etiquetas con QR para imprimir en A4 e informes en PDF.
 - Copias de seguridad automáticas y manuales, y restauración.
 - Interfaz con modo sencillo (por defecto) y avanzado, tema claro u oscuro, tamaño de letra ajustable y panel de detalle.
