@@ -254,7 +254,7 @@ def hoja_de_estilos() -> str:
     QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QPlainTextEdit:focus {{ border: 1px solid {c['primario']}; }}
     QLineEdit:disabled, QComboBox:disabled {{ background: {c['fondo']}; color: {c['texto_suave']}; }}
     QLineEdit#busqueda {{ border-radius: {px(18)}px; padding: {px(5)}px {px(14)}px; background: {c['fondo']};
-                         min-width: {px(360)}px; }}
+                         min-width: {px(270)}px; }}
     QLineEdit#busqueda:focus {{ background: {c['superficie']}; }}
     QComboBox::drop-down, QFontComboBox::drop-down {{ border: none; width: {px(24)}px; }}
     QComboBox::down-arrow, QFontComboBox::down-arrow {{ image: url("{flecha_abajo}"); width: {px(14)}px; height: {px(14)}px; }}

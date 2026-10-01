@@ -51,13 +51,19 @@ class EstadoVacio(QWidget):
         self.logo = QLabel(alignment=Qt.AlignmentFlag.AlignCenter)
         self.titulo = QLabel(objectName="titulo_seccion", alignment=Qt.AlignmentFlag.AlignCenter)
         self.texto = QLabel(objectName="suave", alignment=Qt.AlignmentFlag.AlignCenter, wordWrap=True)
-        self.texto.setMaximumWidth(tema.px(460))
+        self.texto.setFixedWidth(tema.px(460))  # con ancho fijo, el texto largo baja de línea sin cortarse
         self.botones = QHBoxLayout()
         capa = QVBoxLayout(self)
         capa.addStretch(2)
         capa.addWidget(self.logo)
         capa.addWidget(self.titulo)
-        capa.addWidget(self.texto, alignment=Qt.AlignmentFlag.AlignHCenter)
+        # Centrado con una fila y márgenes elásticos: si se centra con «alignment», Qt no calcula
+        # bien la altura del texto con varias líneas y corta la última.
+        fila_texto = QHBoxLayout()
+        fila_texto.addStretch()
+        fila_texto.addWidget(self.texto)
+        fila_texto.addStretch()
+        capa.addLayout(fila_texto)
         capa.addSpacing(tema.px(12))
         capa.addLayout(self.botones)
         capa.addStretch(3)
@@ -65,7 +71,7 @@ class EstadoVacio(QWidget):
     def configurar(self, logo: bool, icono: str, titulo: str, texto: str, botones: list) -> None:
         if logo:
             imagen = QPixmap(str(comun.RECURSOS / "logo.png"))
-            self.logo.setPixmap(imagen.scaledToWidth(tema.px(170), Qt.TransformationMode.SmoothTransformation))
+            self.logo.setPixmap(imagen.scaledToWidth(tema.px(140), Qt.TransformationMode.SmoothTransformation))
         else:
             self.logo.setPixmap(tema.icono(icono, "borde_fuerte", tema.px(56)).pixmap(tema.px(56)))
         self.titulo.setText(titulo)
