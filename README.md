@@ -5,12 +5,12 @@ Aplicación de escritorio para Windows, **sin conexión**, que registra dónde s
 - Catálogo de ubicaciones configurable, que se reorganiza arrastrando nodos.
 - Diez tipos de elemento predefinidos, ampliables con tipos y campos propios.
 - Búsqueda instantánea sin acentos (SQLite FTS5) y filtros.
-- Alta masiva por balda y autocompletado por ISBN (Open Library) cuando hay Internet.
+- Alta masiva por balda, importación desde Excel o CSV y autocompletado por ISBN (Open Library) cuando hay Internet.
 - Portadas, préstamos, etiquetas con QR para imprimir en A4 e informes en PDF.
 - Copias de seguridad automáticas y manuales, y restauración.
-- Interfaz con tema claro u oscuro, tamaño de letra ajustable y panel de detalle.
+- Interfaz con modo sencillo (por defecto) y avanzado, tema claro u oscuro, tamaño de letra ajustable y panel de detalle.
 - No necesita Python ni nada instalado en el equipo: todo va dentro del paquete.
-- Carpeta portable: `LibriDomus.exe` + `_internal` + `datos`.
+- Se distribuye como instalador (por usuario, sin administrador) o como carpeta portable: `LibriDomus.exe` + `_internal` + `datos`.
 
 ## Documentación
 
@@ -28,5 +28,5 @@ py -3.13 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements-dev.txt
 .venv\Scripts\python -m pytest -q          # pruebas
 .venv\Scripts\python LibriDomus.py   # abrir el programa
-.\build\build.ps1                           # generar el ZIP portable
+.\build\build.ps1                           # generar el ZIP portable y el instalador
 ```

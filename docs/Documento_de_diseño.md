@@ -1,6 +1,6 @@
 # LibriDomus — Documento de diseño
 
-- **Versión:** 1.2 (LibriDomus)
+- **Versión:** 1.3 (LibriDomus)
 - **Fecha:** 30/09/2026
 - **Estado:** implementado (fases 0 a 5). Ver el apartado 9.
 
@@ -333,6 +333,15 @@ Tras las pruebas de estrés, rendimiento y seguridad (`docs/Informe_robustez.md`
 - **Interfaz:** texto plano para los datos del usuario, refresco parcial, informes por partes y cursor de espera.
 - **Entorno de compilación:** **Python 3.13.15** (OpenSSL 3.0.21, SQLite 3.50.4).
 - **Pruebas:** 178 automáticas.
+
+### Versión 1.3 — Más sencillo, importar e instalador
+
+Peticiones del usuario tras probar la 1.2 en otro equipo:
+- **Modo sencillo y modo avanzado**, como la calculadora de Windows. El programa **arranca en el sencillo** salvo que el usuario elija otro. En el sencillo, la ficha solo muestra tipo, título, personas, año, identificador, portada, ubicación y notas; el resto aparece con *Más campos* o por sí solo si ya tiene datos (**ocultar nunca borra**). También se simplifican los filtros, la barra y el alta masiva. Se cambia con Alt+1 / Alt+2, el botón de la barra de estado, el menú *Ver* o *Preferencias*.
+- **Importar desde Excel (.xlsx) o CSV** (*Archivo › Importar…*): propuesta automática de columnas, tipo y ubicación por defecto, ubicaciones por código o ruta, papeles de las personas, ISBN repetidos omitidos, todo en una transacción, resumen con avisos y **deshacer**. Lo que no encaja va a las notas. Plantilla de Excel incluida. Nueva dependencia: **openpyxl 3.1.5**.
+- **Instalador** con Inno Setup 6, además del ZIP: instalación por usuario sin administrador (la carpeta `datos` sigue junto al programa), accesos en Inicio, actualización conservando los datos y desinstalación que no borra `datos`.
+- **Icono nuevo vectorial** (`res/LibriDomus-icono.svg`, redibujo del logotipo original) con una versión simplificada para 16-32 px: nítido a cualquier tamaño (icono de 512 px y PNG de 1024 px).
+- **Pruebas:** 198 automáticas.
 
 ---
 
