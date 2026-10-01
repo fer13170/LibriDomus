@@ -145,6 +145,8 @@ class PanelDetalle(QWidget):
             texto = "<br>".join(f"{html.escape(n)} <span style='color:{tema.color('texto_suave')}'>"
                                 f"· {html.escape(r)}</span>" for n, r in e.personas)
             self.capa.addWidget(_etiqueta(texto, html_propio=True))
+        if e.categorias:
+            self.capa.addWidget(_etiqueta(" · ".join(e.categorias), "categoria"))
 
         # Préstamo destacado
         if e.prestado_a:

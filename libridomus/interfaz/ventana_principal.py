@@ -12,12 +12,13 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComb
                                QSplitter, QStackedWidget, QTableView, QToolButton, QVBoxLayout, QWidget)
 
 from .. import NOMBRE, VERSION, rutas
-from ..datos import elementos, tipos, ubicaciones
+from ..datos import categorias, elementos, tipos, ubicaciones
 from ..datos.ubicaciones import ErrorUbicacion
 from ..servicios import busqueda, configuracion, copias, informes
 from ..servicios.busqueda import Filtros
 from . import comun, tema
 from .alta_masiva import AltaMasiva
+from .categorias import EditorCategorias
 from .arbol_ubicaciones import ID_SIN_UBICACION, ID_TODAS, ArbolUbicaciones
 from .comun import reiniciar
 from .dialogo_copias import DialogoRestaurar
@@ -32,7 +33,7 @@ from .panel_detalle import PanelDetalle
 from .preferencias import Preferencias
 from .selector_ubicacion import elegir_ubicacion
 
-ANCHOS_COLUMNAS = [150, 260, 170, 56, 260, 90, 100]
+ANCHOS_COLUMNAS = [150, 260, 170, 56, 260, 90, 100, 170]
 
 
 def conexion_abierta(con: sqlite3.Connection) -> bool:
@@ -169,6 +170,8 @@ class VentanaPrincipal(QMainWindow):
                                  "muebles, baldas y cajas de la casa")
         self.acc_ubicaciones_menu = A("Ubicaciones de la casa…", "house", self.editar_ubicaciones)
         self.acc_tipos = A("Tipos de elemento y campos…", "sliders-horizontal", self.editar_tipos)
+        self.acc_categorias = A("Categorías…", "tag", self.editar_categorias,
+                                ayuda="Géneros y materias para clasificar la colección y buscar por ellos")
         self.acc_etiquetas = A("Etiquetas", "qr-code", self.imprimir_etiquetas, QKeySequence("Ctrl+E"),
                                "Imprimir etiquetas con código, contenido y QR para cajas y baldas")
         self.acc_inventario = A("Inventario de la ubicación seleccionada…", "file-text", self.informe_inventario)
@@ -292,6 +295,7 @@ class VentanaPrincipal(QMainWindow):
 
     def _crear_filtros(self) -> QWidget:
         self.f_tipo = QComboBox()
+        self.f_categoria = QComboBox()
         self.f_etiqueta = QComboBox()
         self.f_estado = QComboBox()
         self.f_idioma = QComboBox()
@@ -304,12 +308,12 @@ class VentanaPrincipal(QMainWindow):
         capa = CapaFluida(panel, tema.px(8))  # pasa a otra línea si no cabe
         self.icono_filtro = QLabel()
         capa.addWidget(self.icono_filtro)
-        for combo in (self.f_tipo, self.f_etiqueta, self.f_estado, self.f_idioma):
+        for combo in (self.f_tipo, self.f_categoria, self.f_etiqueta, self.f_estado, self.f_idioma):
             combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        for w in (self.f_tipo, self.f_etiqueta, self.f_estado, self.f_idioma, self.f_prestados,
+        for w in (self.f_tipo, self.f_categoria, self.f_etiqueta, self.f_estado, self.f_idioma, self.f_prestados,
                   self.f_pendientes, self.f_limpiar):
             capa.addWidget(w)
-        for combo in (self.f_tipo, self.f_etiqueta, self.f_estado, self.f_idioma):
+        for combo in (self.f_tipo, self.f_categoria, self.f_etiqueta, self.f_estado, self.f_idioma):
             combo.currentIndexChanged.connect(lambda _i: self.refrescar_resultados())
         for casilla in (self.f_prestados, self.f_pendientes):
             casilla.toggled.connect(lambda _v: self.refrescar_resultados())
@@ -334,6 +338,8 @@ class VentanaPrincipal(QMainWindow):
 
         llenar(self.f_tipo, "Todos los tipos",
                [(t.nombre, t.id, t.icono) for t in tipos.listar(self.con, con_campos=False)])
+        llenar(self.f_categoria, "Todas las categorías",
+               [(c.nombre, c.id, "") for c in categorias.listar(self.con)])
         llenar(self.f_etiqueta, "Todas las etiquetas",
                [(e, e, "tag") for e in elementos.nombres_etiquetas(self.con)])
         llenar(self.f_estado, "Cualquier estado", [(e, e, "") for e in elementos.ESTADOS])
@@ -342,18 +348,21 @@ class VentanaPrincipal(QMainWindow):
         llenar(self.f_idioma, "Cualquier idioma", [(i, i, "") for i in usados])
 
     def _hay_filtros(self) -> bool:
-        return any([self.f_tipo.currentIndex() > 0, self.f_etiqueta.currentIndex() > 0,
+        return any([self.f_tipo.currentIndex() > 0, self.f_categoria.currentIndex() > 0,
+                    self.f_etiqueta.currentIndex() > 0,
                     self.f_estado.currentIndex() > 0, self.f_idioma.currentIndex() > 0,
                     self.f_prestados.isChecked(), self.f_pendientes.isChecked(), self.busqueda.text().strip()])
 
     def quitar_filtros(self):
-        for w in (self.f_tipo, self.f_etiqueta, self.f_estado, self.f_idioma, self.f_prestados, self.f_pendientes):
+        filtros = (self.f_tipo, self.f_categoria, self.f_etiqueta, self.f_estado, self.f_idioma, self.f_prestados,
+                   self.f_pendientes)
+        for w in filtros:
             w.blockSignals(True)
-        for combo in (self.f_tipo, self.f_etiqueta, self.f_estado, self.f_idioma):
+        for combo in (self.f_tipo, self.f_categoria, self.f_etiqueta, self.f_estado, self.f_idioma):
             combo.setCurrentIndex(0)
         self.f_prestados.setChecked(False)
         self.f_pendientes.setChecked(False)
-        for w in (self.f_tipo, self.f_etiqueta, self.f_estado, self.f_idioma, self.f_prestados, self.f_pendientes):
+        for w in filtros:
             w.blockSignals(False)
         self.busqueda.clear()
         self.refrescar_resultados()
@@ -466,6 +475,7 @@ class VentanaPrincipal(QMainWindow):
 
         self.menu_catalogo = self.menuBar().addMenu("&Catálogo")
         self.menu_catalogo.addAction(self.acc_ubicaciones_menu)
+        self.menu_catalogo.addAction(self.acc_categorias)
         self.menu_catalogo.addAction(self.acc_tipos)
 
         informes_menu = self.menuBar().addMenu("&Informes")
@@ -626,6 +636,7 @@ class VentanaPrincipal(QMainWindow):
         f = Filtros(
             texto=self.busqueda.text(),
             tipo_id=self.f_tipo.currentData(),
+            categoria_id=self.f_categoria.currentData(),
             etiqueta=self.f_etiqueta.currentData() or "",
             estado=self.f_estado.currentData() or "",
             idioma=self.f_idioma.currentData() or "",
@@ -887,6 +898,12 @@ class VentanaPrincipal(QMainWindow):
         dialogo.exec()
         if dialogo.creados:
             self.refrescar_todo(dialogo.creados[-1])
+
+    def editar_categorias(self):
+        editor = EditorCategorias(self.con, self)
+        editor.exec()
+        if editor.hubo_cambios:
+            self.refrescar_todo()
 
     def editar_tipos(self):
         editor = EditorTipos(self.con, self)

@@ -236,6 +236,10 @@ class ResumenImportacion(QDialog):
             lineas.append(f"IMPORTADAS CON AVISOS ({len(informe.avisos)}):")
             lineas += [f"  Fila {fila}: {texto_}" for fila, texto_ in informe.avisos]
             lineas.append("")
+        if informe.categorias_nuevas:
+            lineas.append(f"CATEGORÍAS NUEVAS AÑADIDAS AL CATÁLOGO ({len(informe.categorias_nuevas)}):")
+            lineas.append("  " + ", ".join(informe.categorias_nuevas))
+            lineas.append("")
         if not lineas:
             lineas.append("Todas las filas se han importado sin problemas.")
         else:

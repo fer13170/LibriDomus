@@ -10,7 +10,7 @@ import os
 from .. import rutas
 
 ESCALAS_VALIDAS = (0.9, 1.0, 1.15, 1.3, 1.5)
-NUM_COLUMNAS = 7  # columnas de la lista de la ventana principal
+NUM_COLUMNAS = 8  # columnas de la lista de la ventana principal
 MODOS = ("sencillo", "avanzado")
 
 POR_DEFECTO = {

@@ -16,7 +16,7 @@ MIME_ELEMENTOS = "application/x-libridomus-elementos"
 _BANDERAS_CELDA = Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsDragEnabled
 _SIN_BANDERAS = Qt.ItemFlag.NoItemFlags
 
-COLUMNAS = ["Tipo", "Título", "Personas", "Año", "Ubicación", "Estado", "Prestado a"]
+COLUMNAS = ["Tipo", "Título", "Personas", "Año", "Ubicación", "Estado", "Prestado a", "Categoría"]
 
 # Clave de ordenación de cada columna (sin acentos ni mayúsculas; el año, como número).
 CLAVES_ORDEN = [
@@ -27,6 +27,7 @@ CLAVES_ORDEN = [
     lambda r: texto.clave_orden(r.ubicacion),
     lambda r: texto.clave_orden(r.estado),
     lambda r: texto.clave_orden(r.prestado_a),
+    lambda r: texto.clave_orden(r.categorias),
 ]
 
 
@@ -113,6 +114,7 @@ class ModeloResultados(QAbstractTableModel):
             return [
                 r.tipo, r.titulo + (f": {r.subtitulo}" if r.subtitulo else ""), r.creadores,
                 str(r.anio) if r.anio else "", r.ubicacion or "Sin ubicación", r.estado, r.prestado_a,
+                r.categorias,
             ][col]
         if rol == Qt.ItemDataRole.DecorationRole:
             if col == 0:

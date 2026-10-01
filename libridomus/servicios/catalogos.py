@@ -142,6 +142,8 @@ def leer_ficha_agencia(pagina: str, codigo: str) -> DatosLibro | None:
     datos.paginas = _paginas(_texto_html(filas.get("descripción", "")))
     lengua = _texto_html(filas.get("lengua de publicación", "")).split(",")[0].strip().casefold()
     datos.idioma = IDIOMAS_TEXTO.get(lengua, "")
+    # Materias con código Thema / BIC: 'FH - Obra De Misterio Y Suspense'
+    datos.materias = [_texto_html(m) for m in re.findall(r"<span[^>]*>(.*?)</span>", filas.get("materia/s", ""), re.S)]
     return datos
 
 
@@ -214,6 +216,9 @@ def leer_marc21(registro: ET.Element, codigo: str) -> DatosLibro | None:
     datos.paginas = _paginas(m.uno("300", "a"))
     lengua = (m.uno("041", "a") or fijo[35:38]).lower()
     datos.idioma = isbn.IDIOMAS_OPEN_LIBRARY.get(lengua, "")
+    # Género/forma (655: 'Novelas rosas') y materias (650: 'Historia')
+    datos.materias = [limpiar(a) for etiqueta in ("655", "650") for campo in m.todos(etiqueta)
+                      for a in campo.get("a", []) if limpiar(a)]
     return datos
 
 
@@ -245,4 +250,6 @@ def leer_unimarc(registro: ET.Element, codigo: str) -> DatosLibro | None:
     datos.anio = _numero(r"\b(1[5-9]\d\d|20\d\d)\b", m.uno("214", "d") or m.uno("210", "d"))
     datos.paginas = _paginas(m.uno("215", "a"))
     datos.idioma = isbn.IDIOMAS_OPEN_LIBRARY.get(m.uno("101", "a").lower(), "")
+    datos.materias = [limpiar(a) for etiqueta in ("608", "606") for campo in m.todos(etiqueta)
+                      for a in campo.get("a", []) if limpiar(a)]
     return datos

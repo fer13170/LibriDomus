@@ -130,6 +130,36 @@ UPDATE tipo_elemento SET icono = CASE icono
     WHEN '📁' THEN 'folder' WHEN '🗺️' THEN 'map' ELSE icono END;
 """
 
-MIGRACIONES: list[str] = [MIGRACION_1, MIGRACION_2]
+# Versión 3 (LibriDomus 1.4): catálogo de categorías (géneros y materias) configurable por el
+# usuario. Un elemento puede tener varias. Se crea con las categorías habituales de librerías y
+# bibliotecas (también en las bases de datos que ya existían). servicios/clasificar.py usa estos
+# nombres para proponer la categoría a partir de los datos del ISBN.
+MIGRACION_3 = """
+CREATE TABLE categoria (
+    id     INTEGER PRIMARY KEY,
+    nombre TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+
+CREATE TABLE elemento_categoria (
+    elemento_id  INTEGER NOT NULL REFERENCES elemento(id) ON DELETE CASCADE,
+    categoria_id INTEGER NOT NULL REFERENCES categoria(id) ON DELETE CASCADE,
+    PRIMARY KEY (elemento_id, categoria_id)
+);
+CREATE INDEX ix_elemento_categoria_categoria ON elemento_categoria(categoria_id);
+
+INSERT INTO categoria (nombre) VALUES
+    ('Novela'), ('Novela histórica'), ('Novela negra y suspense'), ('Ciencia ficción'), ('Fantasía'),
+    ('Terror'), ('Romántica'), ('Humor'), ('Clásicos de la literatura'), ('Cuento y relato'), ('Poesía'),
+    ('Teatro'), ('Cómic y novela gráfica'), ('Infantil y juvenil'), ('Biografías y memorias'), ('Ensayo'),
+    ('Historia'), ('Arte'), ('Historia del arte'), ('Arquitectura y diseño'), ('Fotografía'), ('Música'),
+    ('Cine, televisión y espectáculos'), ('Filosofía'), ('Religión y espiritualidad'), ('Psicología'),
+    ('Ciencias sociales y política'), ('Economía y empresa'), ('Derecho'), ('Ciencia'),
+    ('Naturaleza y medio ambiente'), ('Medicina y salud'), ('Informática y tecnología'),
+    ('Idiomas y diccionarios'), ('Obras de referencia'), ('Viajes'), ('Geografía y mapas'),
+    ('Gastronomía y cocina'), ('Deportes'), ('Aficiones y manualidades'), ('Hogar y jardín'),
+    ('Educación'), ('Autoayuda y desarrollo personal'), ('Familia y crianza');
+"""
+
+MIGRACIONES: list[str] = [MIGRACION_1, MIGRACION_2, MIGRACION_3]
 
 VERSION_ESQUEMA = len(MIGRACIONES)

@@ -50,6 +50,8 @@ class DatosLibro:
     portada: bytes | None = None
     fuente: str = ""
     traductores: list[str] = field(default_factory=list)
+    materias: list[str] = field(default_factory=list)  # temas tal como los da la fuente (ver clasificar.py)
+    portada_por_titulo: bool = False                   # la portada se buscó por título: puede ser otra edición
 
 
 # ---------------------------------------------------------------- validación
@@ -195,6 +197,7 @@ def consultar_open_library(isbn: str) -> DatosLibro | None:
     datos.anio = _anio(edicion.get("publish_date"))
     paginas = edicion.get("number_of_pages")
     datos.paginas = paginas if isinstance(paginas, int) and not isinstance(paginas, bool) and paginas > 0 else None
+    datos.materias = [_texto(m) for m in _lista(edicion.get("subjects")) if _texto(m)][:10]
     idiomas = _lista(edicion.get("languages"))
     if idiomas:
         clave = _texto(_dic(idiomas[0]).get("key")).rsplit("/", 1)[-1]
@@ -240,6 +243,7 @@ def consultar_google_books(isbn: str, clave: str) -> DatosLibro | None:
     paginas = info.get("pageCount")
     datos.paginas = paginas if isinstance(paginas, int) and not isinstance(paginas, bool) and paginas > 0 else None
     datos.idioma = IDIOMAS_ISO2.get(_texto(info.get("language")), "")
+    datos.materias = [_texto(c) for c in _lista(info.get("categories")) if _texto(c)]
     imagen = _texto(_dic(info.get("imageLinks")).get("thumbnail"))
     if imagen:
         try:
@@ -298,6 +302,7 @@ def fusionar(base: DatosLibro, otro: DatosLibro) -> None:
         base.autores = list(otro.autores)
     if not base.traductores and otro.traductores:
         base.traductores = list(otro.traductores)
+    base.materias += [m for m in otro.materias if m not in base.materias]
     if otro.fuente and otro.fuente not in base.fuente:
         base.fuente += f" + {otro.fuente}"
 

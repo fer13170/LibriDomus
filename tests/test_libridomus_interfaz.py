@@ -92,7 +92,7 @@ def test_migracion_2_cambia_emojis_por_iconos(carpeta_datos):
     bruta.commit()
     bruta.close()
     con = conexion.abrir()
-    assert conexion.version(con) == 2
+    assert conexion.version(con) == esquema.VERSION_ESQUEMA  # migra hasta la última versión
     assert dict(con.execute("SELECT nombre, icono FROM tipo_ubicacion").fetchall()) == {"Caja": "box", "Baúl": "map-pin"}
     assert dict(con.execute("SELECT nombre, icono FROM tipo_elemento").fetchall()) == {"Libro": "book", "Propio": "🎲"}
     assert list(rutas.carpeta_copias().glob("antes_de_migrar_v1_*.db"))  # copia previa a migrar

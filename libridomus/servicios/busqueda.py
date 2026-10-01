@@ -30,9 +30,11 @@ def reindexar(con: sqlite3.Connection, elemento_id: int, rutas: dict[int, str] |
     personas = " ".join(f[0] for f in con.execute(
         "SELECT p.nombre FROM elemento_persona ep JOIN persona p ON p.id = ep.persona_id WHERE ep.elemento_id = ?",
         (elemento_id,)))
+    # Las categorías van en la misma columna que las etiquetas: así 'historia del arte' las encuentra.
     etiquetas = " ".join(f[0] for f in con.execute(
-        "SELECT t.nombre FROM elemento_etiqueta et JOIN etiqueta t ON t.id = et.etiqueta_id WHERE et.elemento_id = ?",
-        (elemento_id,)))
+        "SELECT t.nombre FROM elemento_etiqueta et JOIN etiqueta t ON t.id = et.etiqueta_id WHERE et.elemento_id = ?"
+        " UNION ALL SELECT c.nombre FROM elemento_categoria ec JOIN categoria c ON c.id = ec.categoria_id"
+        " WHERE ec.elemento_id = ?", (elemento_id, elemento_id)))
     campos = " ".join(f[0] for f in con.execute(
         "SELECT valor FROM valor_campo WHERE elemento_id = ?", (elemento_id,)))
     texto = " ".join(str(v) for v in (
@@ -127,6 +129,7 @@ class Filtros:
     ubicacion_id: int | None = None      # incluye sus sububicaciones
     sin_ubicacion: bool = False
     etiqueta: str = ""
+    categoria_id: int | None = None
     persona: str = ""
     estado: str = ""
     idioma: str = ""
@@ -154,6 +157,7 @@ class Resultado:
     prestado_a: str
     identificador: str
     portada: str
+    categorias: str = ""
 
 
 def buscar(con: sqlite3.Connection, filtros: Filtros) -> list[Resultado]:
@@ -197,6 +201,9 @@ def buscar(con: sqlite3.Connection, filtros: Filtros) -> list[Resultado]:
             "e.id IN (SELECT et.elemento_id FROM elemento_etiqueta et JOIN etiqueta t ON t.id = et.etiqueta_id"
             " WHERE t.nombre = ? COLLATE NOCASE)")
         parametros.append(filtros.etiqueta)
+    if filtros.categoria_id is not None:
+        condiciones.append("e.id IN (SELECT elemento_id FROM elemento_categoria WHERE categoria_id = ?)")
+        parametros.append(filtros.categoria_id)
     if filtros.persona:
         condiciones.append(
             "e.id IN (SELECT ep.elemento_id FROM elemento_persona ep JOIN persona p ON p.id = ep.persona_id"
@@ -218,11 +225,14 @@ def buscar(con: sqlite3.Connection, filtros: Filtros) -> list[Resultado]:
         {prefijo_cte}
         SELECT e.id, e.tipo_id, t.nombre AS tipo, t.icono, e.titulo, e.subtitulo, e.anio, e.ubicacion_id,
                e.estado, e.idioma, e.consumido, e.valoracion, e.prestado_a, e.identificador, e.portada,
-               c.creadores
+               c.creadores, k.categorias
         FROM elemento e JOIN tipo_elemento t ON t.id = e.tipo_id {union_fts}
         LEFT JOIN (SELECT ep.elemento_id, GROUP_CONCAT(p.nombre, ', ' ORDER BY ep.orden) AS creadores
                    FROM elemento_persona ep JOIN persona p ON p.id = ep.persona_id
                    GROUP BY ep.elemento_id) c ON c.elemento_id = e.id
+        LEFT JOIN (SELECT ec.elemento_id, GROUP_CONCAT(ca.nombre, ', ') AS categorias
+                   FROM elemento_categoria ec JOIN categoria ca ON ca.id = ec.categoria_id
+                   GROUP BY ec.elemento_id) k ON k.elemento_id = e.id
         {donde}
         {orden}
     """
@@ -234,7 +244,7 @@ def buscar(con: sqlite3.Connection, filtros: Filtros) -> list[Resultado]:
             ubicacion_id=f["ubicacion_id"], ubicacion=rutas.get(f["ubicacion_id"], ""),
             estado=f["estado"], idioma=f["idioma"], consumido=bool(f["consumido"]),
             valoracion=f["valoracion"], prestado_a=f["prestado_a"], identificador=f["identificador"],
-            portada=f["portada"],
+            portada=f["portada"], categorias=f["categorias"] or "",
         )
         for f in con.execute(sql, [*parametros_cte, *parametros])
     ]

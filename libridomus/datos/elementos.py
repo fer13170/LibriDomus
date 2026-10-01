@@ -4,6 +4,8 @@ import re
 import sqlite3
 from dataclasses import dataclass, field
 
+from .. import texto
+from . import categorias
 from .conexion import transaccion
 
 ESTADOS = ["Nuevo", "Muy bueno", "Bueno", "Regular", "Deteriorado"]
@@ -40,6 +42,7 @@ class Elemento:
     personas: list[tuple[str, str]] = field(default_factory=list)  # (nombre, rol)
     etiquetas: list[str] = field(default_factory=list)
     valores: dict[int, str] = field(default_factory=dict)          # campo_id -> valor
+    categorias: list[str] = field(default_factory=list)            # nombres del catálogo de categorías
 
 
 _COLUMNAS = ["tipo_id", "titulo", "subtitulo", "anio", "fecha_desde", "fecha_hasta", "idioma", "estado",
@@ -83,6 +86,7 @@ def _validar(e: Elemento) -> None:
         setattr(e, campo, limpiar_texto(getattr(e, campo) or ""))
     e.personas = [(limpiar_texto(n), limpiar_texto(r)) for n, r in e.personas]
     e.etiquetas = [limpiar_texto(x) for x in e.etiquetas]
+    e.categorias = [limpiar_texto(x) for x in e.categorias]
     e.valores = {campo_id: limpiar_texto(v) for campo_id, v in e.valores.items()}
     e.titulo = e.titulo.strip()
     if not e.titulo:
@@ -105,6 +109,12 @@ def _validar(e: Elemento) -> None:
             vistas.add(et.casefold())
             etiquetas.append(et)
     e.etiquetas = etiquetas
+    vistas, categorias_ = set(), []
+    for cat in (" ".join(x.split()) for x in e.categorias):
+        if cat and texto.clave_orden(cat) not in vistas:
+            vistas.add(texto.clave_orden(cat))
+            categorias_.append(cat)
+    e.categorias = categorias_
 
 
 def guardar(con: sqlite3.Connection, e: Elemento) -> int:
@@ -144,6 +154,10 @@ def guardar(con: sqlite3.Connection, e: Elemento) -> int:
                 "INSERT OR IGNORE INTO elemento_etiqueta (elemento_id, etiqueta_id) VALUES (?, ?)",
                 (e.id, _obtener_o_crear(con, "etiqueta", nombre)),
             )
+        con.execute("DELETE FROM elemento_categoria WHERE elemento_id = ?", (e.id,))
+        for nombre in e.categorias:  # si no existe en el catálogo, se añade (p. ej. al importar)
+            con.execute("INSERT OR IGNORE INTO elemento_categoria (elemento_id, categoria_id) VALUES (?, ?)",
+                        (e.id, categorias.obtener_o_crear(con, nombre)))
         con.execute("DELETE FROM valor_campo WHERE elemento_id = ?", (e.id,))
         for campo_id, valor in e.valores.items():
             if str(valor).strip():
@@ -193,6 +207,9 @@ def obtener(con: sqlite3.Connection, elemento_id: int) -> Elemento | None:
         " WHERE et.elemento_id = ? ORDER BY t.nombre COLLATE ES", (elemento_id,))]
     e.valores = {f[0]: f[1] for f in con.execute(
         "SELECT campo_id, valor FROM valor_campo WHERE elemento_id = ?", (elemento_id,))}
+    e.categorias = sorted((f[0] for f in con.execute(
+        "SELECT c.nombre FROM elemento_categoria ec JOIN categoria c ON c.id = ec.categoria_id"
+        " WHERE ec.elemento_id = ?", (elemento_id,))), key=texto.clave_orden)
     return e
 
 

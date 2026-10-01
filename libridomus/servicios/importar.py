@@ -19,7 +19,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from .. import texto
-from ..datos import elementos, tipos, ubicaciones
+from ..datos import categorias, elementos, tipos, ubicaciones
 from ..datos.conexion import transaccion
 from ..datos.elementos import Elemento, ErrorElemento
 
@@ -43,6 +43,7 @@ DESTINOS_COMUNES = [
     ("estado", "Conservación"),
     ("valoracion", "Valoración (0 a 5)"),
     ("consumido", "Leído / visto / escuchado"),
+    ("categorias", "Categorías (género, materia)"),
     ("etiquetas", "Etiquetas"),
     ("prestado_a", "Prestado a"),
     ("fecha_desde", "Periodo desde"),
@@ -63,14 +64,17 @@ SINONIMOS = {
     "ano de publicacion": "anio", "fecha de publicacion": "anio",
     "isbn": "identificador", "ean": "identificador", "issn": "identificador", "identificador": "identificador",
     "codigo de barras": "identificador", "isbn13": "identificador", "isbn-13": "identificador",
-    "tipo": "tipo", "clase": "tipo", "categoria": "tipo",
+    "tipo": "tipo", "clase": "tipo",
     "ubicacion": "ubicacion", "lugar": "ubicacion", "estanteria": "ubicacion", "codigo": "ubicacion",
     "donde": "ubicacion", "sitio": "ubicacion", "balda": "ubicacion", "caja": "ubicacion",
     "idioma": "idioma", "lengua": "idioma", "language": "idioma",
     "estado": "estado", "conservacion": "estado",
     "valoracion": "valoracion", "puntuacion": "valoracion", "nota": "valoracion", "estrellas": "valoracion",
     "leido": "consumido", "visto": "consumido", "escuchado": "consumido", "jugado": "consumido",
-    "etiquetas": "etiquetas", "etiqueta": "etiquetas", "tags": "etiquetas", "genero": "etiquetas",
+    "etiquetas": "etiquetas", "etiqueta": "etiquetas", "tags": "etiquetas",
+    "categoria": "categorias", "categorias": "categorias", "genero": "categorias", "generos": "categorias",
+    "materia": "categorias", "materias": "categorias", "tema": "categorias", "temas": "categorias",
+    "genre": "categorias", "category": "categorias",
     "prestado a": "prestado_a", "prestado": "prestado_a", "prestamo": "prestado_a",
     "desde": "fecha_desde", "periodo desde": "fecha_desde", "hasta": "fecha_hasta",
     "periodo hasta": "fecha_hasta", "evento": "lugar_evento", "lugar / evento": "lugar_evento",
@@ -95,6 +99,7 @@ class Informe:
     creados: list[int] = field(default_factory=list)
     omitidos: list[tuple[int, str]] = field(default_factory=list)   # (nº de fila en el archivo, motivo)
     avisos: list[tuple[int, str]] = field(default_factory=list)
+    categorias_nuevas: list[str] = field(default_factory=list)  # no estaban en el catálogo: se han creado
 
 
 def normalizar(valor: str) -> str:
@@ -297,6 +302,7 @@ def importar(con: sqlite3.Connection, tabla: Tabla, mapa: dict[int, str], tipo_p
     buscador = _Ubicaciones(con)
     estados = {normalizar(e): e for e in elementos.ESTADOS}
     informe = Informe()
+    catalogo = {texto.clave_orden(n): n for n in categorias.nombres(con)}
     vistos: set[str] = set()  # identificadores ya importados en este mismo archivo
     columnas = sorted(mapa.items())
 
@@ -368,6 +374,15 @@ def importar(con: sqlite3.Connection, tabla: Tabla, mapa: dict[int, str], tipo_p
             e.consumido = normalizar(primero("consumido")) in VALORES_SI
             for _, valor in valores.get("etiquetas", []):
                 e.etiquetas += [x for x in re.split(r"[,;]", valor) if x.strip()]
+            for _, valor in valores.get("categorias", []):
+                for nombre in (" ".join(x.split()) for x in re.split(r"[,;]", valor)):
+                    if not nombre:
+                        continue
+                    clave = texto.clave_orden(nombre)
+                    if clave not in catalogo:  # se crea al guardar; se avisa en el resumen
+                        catalogo[clave] = nombre
+                        informe.categorias_nuevas.append(nombre)
+                    e.categorias.append(catalogo[clave])
             e.prestado_a = primero("prestado_a")
             if e.prestado_a:
                 e.fecha_prestamo = date.today().isoformat()
@@ -423,9 +438,10 @@ def importar(con: sqlite3.Connection, tabla: Tabla, mapa: dict[int, str], tipo_p
 
 # ------------------------------------------------------------------ plantilla
 
-COLUMNAS_PLANTILLA = ["Tipo", "Título", "Autor", "Año", "ISBN", "Editorial", "Ubicación", "Etiquetas", "Notas"]
+COLUMNAS_PLANTILLA = ["Tipo", "Título", "Autor", "Año", "ISBN", "Editorial", "Ubicación", "Categoría",
+                      "Etiquetas", "Notas"]
 EJEMPLO_PLANTILLA = ["Libro", "Cien años de soledad", "Gabriel García Márquez", "1967", "978-84-376-0494-7",
-                     "Cátedra", "PB", "novela, clásicos", "Ejemplo: borra esta fila"]
+                     "Cátedra", "PB", "Clásicos de la literatura", "firmado", "Ejemplo: borra esta fila"]
 
 
 def escribir_plantilla(destino: Path | str) -> None:
@@ -440,7 +456,7 @@ def escribir_plantilla(destino: Path | str) -> None:
     hoja.append(EJEMPLO_PLANTILLA)
     for celda in hoja[1]:
         celda.font = Font(bold=True)
-    for letra, ancho in zip("ABCDEFGHI", (12, 36, 28, 8, 20, 18, 22, 22, 30)):
+    for letra, ancho in zip("ABCDEFGHIJ", (12, 36, 28, 8, 20, 18, 22, 26, 18, 30)):
         hoja.column_dimensions[letra].width = ancho
     hoja.freeze_panes = "A2"
     ayuda = libro.create_sheet("Instrucciones")
@@ -451,6 +467,8 @@ def escribir_plantilla(destino: Path | str) -> None:
         "• Tipo: Libro, Disco, Película, Revista / Cómic... (si se deja vacío se usa el que elijas al importar).",
         "• Autor: varias personas separadas por punto y coma. Para indicar el papel: «Luis Gil (Traductor)».",
         "• Ubicación: el código de la etiqueta (p. ej. PB-SAL-EA-B3) o la ruta (Planta baja > Salón > Estantería A).",
+        "• Categoría: una o varias separadas por comas (Novela histórica, Historia del arte...). "
+        "Las que no existan en LibriDomus se crean.",
         "• Etiquetas: separadas por comas.",
         "• Puedes añadir más columnas (Idioma, Conservación, Notas, Nº de páginas...): al importar eliges a qué "
         "dato va cada una. Lo que no encaje se guarda en las notas.",

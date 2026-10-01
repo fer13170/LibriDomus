@@ -10,9 +10,9 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFormLayout, QGrou
                                QLabel, QLineEdit, QListWidget, QListWidgetItem, QPushButton, QSpinBox,
                                QVBoxLayout)
 
-from ..datos import elementos, tipos
+from ..datos import categorias, elementos, tipos
 from ..datos.elementos import Elemento, ErrorElemento
-from ..servicios import configuracion, isbn, portadas
+from ..servicios import clasificar, configuracion, isbn, portadas
 from ..servicios.isbn import DatosLibro
 from ..servicios.portadas import ErrorPortada
 from . import autocompletar, comun, tema
@@ -43,9 +43,16 @@ class AltaMasiva(QDialog):
         if tipo_id is not None:
             self.tipo.setCurrentIndex(max(0, self.tipo.findData(tipo_id)))
         self.usar_codigo = QCheckBox("Empezar cada alta por el ISBN / EAN")
+        self.categoria = QComboBox()
+        self.categoria.addItem("— Ninguna —", "")
+        for nombre in categorias.nombres(con):
+            self.categoria.addItem(nombre, nombre)
+        self.categoria.setToolTip("Se añade a todos los elementos de esta sesión, además de la que se "
+                                  "proponga a partir del ISBN")
         fijos = QFormLayout()
         fijos.addRow("Guardar en:", self.ubicacion)
         fijos.addRow("Tipo:", self.tipo)
+        fijos.addRow("Categoría:", self.categoria)
         fijos.addRow("", self.usar_codigo)
         grupo_fijos = QGroupBox("Para todos los elementos de esta sesión")
         grupo_fijos.setLayout(fijos)
@@ -165,8 +172,17 @@ class AltaMasiva(QDialog):
             self.personas.setText("; ".join(datos.autores))
         if datos.anio and not self.anio.value():
             self.anio.setValue(datos.anio)
-        extra = [datos.editorial, str(datos.anio or ""), "con portada" if datos.portada else "sin portada"]
+        if not datos.portada:
+            portada = "sin portada"
+        else:
+            portada = "portada buscada por título" if datos.portada_por_titulo else "con portada"
+        extra = [datos.editorial, str(datos.anio or ""), *self._categorias_isbn(), portada]
         self.estado_consulta.setText(f"Encontrado en {datos.fuente}: " + " · ".join(x for x in extra if x))
+
+    def _categorias_isbn(self) -> list[str]:
+        if not self.datos_isbn:
+            return []
+        return clasificar.proponer(self.datos_isbn.materias, categorias.nombres(self.con))
 
     def _valores_extra(self, tipo_id: int) -> dict[int, str]:
         """Editorial y páginas obtenidas por ISBN, si el tipo tiene esos campos."""
@@ -194,6 +210,7 @@ class AltaMasiva(QDialog):
             ubicacion_id=self.ubicacion.valor(),
             valores=self._valores_extra(t.id),
             idioma=self.datos_isbn.idioma if self.datos_isbn else "",
+            categorias=[c for c in [self.categoria.currentData(), *self._categorias_isbn()] if c],
         )
         repetidos = elementos.buscar_por_identificador(self.con, e.identificador)
         if repetidos and not comun.confirmar(

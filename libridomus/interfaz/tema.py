@@ -326,6 +326,7 @@ def hoja_de_estilos() -> str:
     QLabel#encabezado {{ color: {c['texto_suave']}; font-weight: 700; letter-spacing: 1px;
                          font-size: {PUNTOS_BASE * estado.escala * 0.85:.1f}pt; }}
     QLabel#suave, QLabel#contador {{ color: {c['texto_suave']}; }}
+    QLabel#categoria {{ color: {c['primario']}; font-weight: 600; }}
     QLabel#ruta {{ color: {c['primario']}; }}
     QLabel#chip {{ background: {c['seleccion']}; color: {c['seleccion_texto']}; border-radius: {px(9)}px;
                   padding: {px(1)}px {px(8)}px; }}

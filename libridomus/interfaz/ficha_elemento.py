@@ -1,7 +1,7 @@
 """Ficha de un elemento: alta y edición. El formulario se adapta al tipo elegido.
 
-En el modo sencillo solo se ven los campos básicos (título, personas, año, identificador,
-portada, ubicación y notas). El resto aparece con «Más campos», o por sí solo si ese
+En el modo sencillo solo se ven los campos básicos (título, personas, categorías, año,
+identificador, portada, ubicación y notas). El resto aparece con «Más campos», o por sí solo si ese
 elemento ya tiene algo escrito en él: nunca se ocultan datos que existen.
 """
 
@@ -14,12 +14,13 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QCompleter, QDialog, QFormL
                                QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QPushButton,
                                QScrollArea, QSpinBox, QVBoxLayout, QWidget)
 
-from ..datos import elementos, tipos
+from ..datos import categorias, elementos, tipos
 from ..datos.elementos import Elemento, ErrorElemento
 from ..datos.tipos import Campo, TipoElemento
 from ..servicios.isbn import DatosLibro
-from ..servicios import configuracion
+from ..servicios import clasificar, configuracion
 from . import autocompletar, comun, tema
+from .categorias import CampoCategorias
 from .panel_portada import PanelPortada
 from .selector_ubicacion import CampoUbicacion
 
@@ -180,12 +181,14 @@ class FichaElemento(QDialog):
         self.etiquetas = QLineEdit(placeholderText="Separadas por comas")
         self.etiquetas.setCompleter(completador(elementos.nombres_etiquetas(con), self.etiquetas))
         self.ubicacion = CampoUbicacion(con)
+        self.categorias = CampoCategorias(con)
 
         general = QFormLayout()
         self.form_general = general
         general.addRow("Título *", self.titulo)
         general.addRow("Subtítulo", self.subtitulo)
         general.addRow("Personas", self.personas)
+        general.addRow("Categorías", self.categorias)
         fila = QHBoxLayout()
         fila.addWidget(self.anio)
         self.rotulo_idioma = QLabel("  Idioma")
@@ -400,6 +403,7 @@ class FichaElemento(QDialog):
         self._aplicar_tipo()
         if e is None:
             self.personas.establecer([])
+            self.categorias.establecer([])
             self.ubicacion.establecer(ubicacion_id)
             self.boton_guardar_nuevo.setVisible(True)
             self._aplicar_modo()
@@ -415,6 +419,7 @@ class FichaElemento(QDialog):
         self.valoracion.setCurrentIndex(e.valoracion)
         self.consumido.setChecked(e.consumido)
         self.etiquetas.setText(", ".join(e.etiquetas))
+        self.categorias.establecer(e.categorias)
         self.ubicacion.establecer(e.ubicacion_id)
         self.fecha_desde.setText(e.fecha_desde)
         self.fecha_hasta.setText(e.fecha_hasta)
@@ -452,6 +457,7 @@ class FichaElemento(QDialog):
             notas=self.notas.toPlainText().strip(),
             personas=self.personas.valor(),
             etiquetas=[x for x in self.etiquetas.text().split(",")],
+            categorias=self.categorias.valor(),
             valores=self._valores_a_guardar(base),
             portada=self.portada.nombre,
             prestado_a=prestado_a,
@@ -500,6 +506,8 @@ class FichaElemento(QDialog):
             self.personas.establecer(personas)
         if datos.anio and not self.anio.value():
             self.anio.setValue(datos.anio)
+        if datos.materias and not self.categorias.valor():
+            self.categorias.establecer(clasificar.proponer(datos.materias, categorias.nombres(self.con)))
         if datos.idioma and not self.idioma.currentText().strip():
             self.idioma.setCurrentText(datos.idioma)
         for editor in self.editores.values():
