@@ -326,7 +326,8 @@ Los puntos pendientes del apartado 8 se han resuelto con los valores propuestos:
 
 Tras las pruebas de estrés, rendimiento y seguridad (`docs/Informe_robustez.md`) se corrigieron todos los hallazgos:
 - **Arranque seguro:** instancia única, comprobación de integridad y recuperación guiada si los datos están dañados.
-- **Errores:** gestor global de errores con registro (`datosegistro.log`) y mensajes en castellano.
+- **Errores:** gestor global de errores con registro (`datos
+egistro.log`) y mensajes en castellano.
 - **Datos:** transacciones `BEGIN IMMEDIATE` con espera de 15 s, operaciones por tandas y validación de las preferencias.
 - **Copias:** restauración que exige el esquema exacto, rechaza disparadores y vistas, y extrae los ZIP con límites.
 - **Red:** solo HTTPS, con límite de tamaño y lectura defensiva de las respuestas.
@@ -342,6 +343,11 @@ Peticiones del usuario tras probar la 1.2 en otro equipo:
 - **Instalador** con Inno Setup 6, además del ZIP: instalación por usuario sin administrador (la carpeta `datos` sigue junto al programa), accesos en Inicio, actualización conservando los datos y desinstalación que no borra `datos`.
 - **Icono nuevo vectorial** (`res/LibriDomus-icono.svg`, redibujo del logotipo original) con una versión simplificada para 16-32 px: nítido a cualquier tamaño (icono de 512 px y PNG de 1024 px).
 - **Pruebas:** 198 automáticas.
+
+### Versión 1.3.1 — Más libros encontrados por ISBN
+
+Con 13 ISBN reales probados por el usuario, Open Library solo encontraba 4. Se añaden tres catálogos públicos y gratuitos: la **Agencia Española del ISBN**, la **Biblioteca Nacional de España** y la **Bibliothèque nationale de France**. El orden de consulta depende del país del ISBN y unas fuentes completan los datos que les faltan a otras. Ahora se encuentran 9 de los 13, con traductores incluidos. También se corrige un título estropeado en Open Library («lol»). Detalles en el apartado 4.4 del manual de mantenimiento.
+- **Pruebas:** 215 automáticas.
 
 ---
 
