@@ -1,6 +1,6 @@
 """Autoprueba del ejecutable: ``LibriDomus.exe --autoprueba``.
 
-Comprueba que el paquete trae todo lo necesario (Qt, SQLite con FTS5, segno) y
+Comprueba que el paquete trae todo lo necesario (Qt, SQLite con FTS5, segno, openpyxl) y
 que la base de datos se crea y migra bien. Como el .exe no tiene consola, el
 resultado se escribe en ``datos/autoprueba.txt`` y en el código de salida (0 = bien).
 """
@@ -39,6 +39,7 @@ def ejecutar() -> int:
     paso("Portadas JPEG", _probar_jpeg)
     paso("HTTPS (SSL)", _probar_ssl)
     paso("PDF (etiquetas e informe)", _probar_pdf)
+    paso("Importar desde Excel (openpyxl)", _probar_excel)
 
     lineas.append("RESULTADO: " + ("CORRECTO" if ok else "CON ERRORES"))
     texto = "\n".join(lineas)
@@ -184,3 +185,23 @@ def _probar_qr():
     salida = io.BytesIO()
     segno.make("PB-SAL-EA-B3").save(salida, kind="png", scale=4)
     return f"PNG de {len(salida.getvalue())} bytes"
+
+
+def _probar_excel():
+    """Plantilla de Excel -> leerla -> importarla en una base de datos temporal."""
+    from .datos import conexion
+    from .servicios import importar
+
+    with tempfile.TemporaryDirectory() as carpeta:
+        plantilla = Path(carpeta) / "plantilla.xlsx"
+        importar.escribir_plantilla(plantilla)
+        tabla = importar.leer_tabla(plantilla)
+        con = conexion.abrir(Path(carpeta) / "prueba.db", copia_antes_de_migrar=False)
+        try:
+            mapa = {n: importar.sugerir_destino(c, importar.destinos(con)) for n, c in enumerate(tabla.cabeceras)}
+            libro = con.execute("SELECT id FROM tipo_elemento WHERE nombre = 'Libro'").fetchone()[0]
+            informe = importar.importar(con, tabla, mapa, libro)
+        finally:
+            con.close()
+    assert len(informe.creados) == 1
+    return f"{len(tabla.cabeceras)} columnas leídas e importadas"

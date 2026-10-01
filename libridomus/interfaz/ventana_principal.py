@@ -22,6 +22,7 @@ from .arbol_ubicaciones import ID_SIN_UBICACION, ID_TODAS, ArbolUbicaciones
 from .comun import reiniciar
 from .dialogo_copias import DialogoRestaurar
 from .dialogo_etiquetas import DialogoEtiquetas
+from .dialogo_importar import DialogoImportar
 from .editor_tipos import EditorTipos
 from .editor_ubicaciones import DialogoNuevaUbicacion, EditorUbicaciones
 from .capa_fluida import CapaFluida
@@ -168,6 +169,8 @@ class VentanaPrincipal(QMainWindow):
         self.acc_inf_prestados = A("Elementos prestados…", "handshake", self.informe_prestados)
         self.acc_inf_busqueda = A("Resultado de la búsqueda actual…", "list", self.informe_busqueda)
         self.acc_copia = A("Hacer copia de seguridad…", "archive", self.copia_manual)
+        self.acc_importar = A("Importar desde Excel o CSV…", "file-spreadsheet", self.importar,
+                              ayuda="Añadir muchos elementos de golpe desde una hoja de cálculo")
         self.acc_restaurar = A("Restaurar copia de seguridad…", "rotate-ccw", self.restaurar_copia)
         self.acc_preferencias = A("Preferencias…", "settings", self.preferencias, QKeySequence("Ctrl+,"),
                                   "Apariencia, tamaño de letra, copias e ISBN")
@@ -437,6 +440,8 @@ class VentanaPrincipal(QMainWindow):
 
     def _crear_menus(self):
         archivo = self.menuBar().addMenu("&Archivo")
+        archivo.addAction(self.acc_importar)
+        archivo.addSeparator()
         archivo.addAction(self.acc_copia)
         archivo.addAction(self.acc_restaurar)
         archivo.addSeparator()
@@ -661,9 +666,12 @@ class VentanaPrincipal(QMainWindow):
             b2.clicked.connect(lambda: self.nuevo())
             b3 = comun.boton("Alta masiva", "list-plus")
             b3.clicked.connect(self.alta_masiva)
+            b4 = comun.boton("Importar desde Excel", "file-spreadsheet")
+            b4.clicked.connect(self.importar)
             self.vacio.configurar(True, "", f"Te damos la bienvenida a {NOMBRE}",
                                   "Empieza describiendo tu casa (plantas, habitaciones, muebles, baldas y cajas) "
-                                  "y después registra lo que guardas en cada sitio.", [b1, b2, b3])
+                                  "y después registra lo que guardas en cada sitio. Si ya tienes una lista en "
+                                  "Excel, puedes importarla.", [b1, b2, b3, b4])
         elif self._hay_filtros():
             b = comun.boton("Quitar filtros y búsqueda", "filter-x")
             b.clicked.connect(self.quitar_filtros)
@@ -867,6 +875,12 @@ class VentanaPrincipal(QMainWindow):
         dialogo.exec()
         if dialogo.creados:
             self.refrescar_elementos(dialogo.creados, dialogo.creados[-1])
+
+    def importar(self):
+        dialogo = DialogoImportar(self.con, self.ubicacion_para_nuevo(), self)
+        dialogo.exec()
+        if dialogo.creados:
+            self.refrescar_todo(dialogo.creados[-1])
 
     def editar_tipos(self):
         editor = EditorTipos(self.con, self)
