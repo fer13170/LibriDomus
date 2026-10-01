@@ -356,6 +356,10 @@ Con 13 ISBN reales probados por el usuario, Open Library solo encontraba 4. Se a
 - **Portadas por título y autor** cuando el ISBN no trae portada, y botón *Buscar en Internet* en la ficha.
 - **Pruebas:** 245 automáticas.
 
+### Versión 1.4.1 — Educación y deporte
+
+19 categorías nuevas de educación y deporte (migración 4): educación física, didáctica y pedagogía, libros de texto, oposiciones, medicina deportiva, fisioterapia, nutrición deportiva, psicología del deporte, entrenamiento, deportes de equipo e individuales, actividades en la naturaleza, etc. La propuesta automática las reconoce por palabras clave, también en la descripción de los códigos Thema. Pruebas: 255.
+
 ---
 
 ## 10. Referencias

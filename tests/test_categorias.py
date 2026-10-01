@@ -41,8 +41,9 @@ def libro(con) -> int:
 
 def test_catalogo_inicial_de_categorias(con):
     nombres = categorias.nombres(con)
-    assert len(nombres) == 44
-    for esperada in ("Novela histórica", "Historia del arte", "Humor", "Ciencia ficción", "Infantil y juvenil"):
+    assert len(nombres) == 63  # 44 de la migración 3 + 19 de educación y deporte de la 4
+    for esperada in ("Novela histórica", "Historia del arte", "Humor", "Ciencia ficción", "Infantil y juvenil",
+                     "Educación física", "Medicina deportiva", "Psicología del deporte", "Oposiciones"):
         assert esperada in nombres
     assert nombres == sorted(nombres, key=texto.clave_orden)  # alfabético sin tener en cuenta las tildes
 
@@ -79,15 +80,30 @@ def test_categoria_desconocida_se_crea_al_guardar(con):
     assert categorias.buscar(con, "astronomia") is not None
 
 
-def test_migracion_3_en_una_base_de_datos_antigua(carpeta_datos):
+def test_migraciones_3_y_4_en_una_base_de_datos_antigua(carpeta_datos):
     bruta = sqlite3.connect(rutas.ruta_base_datos())
     bruta.executescript(esquema.MIGRACION_1 + esquema.MIGRACION_2)
     bruta.execute("PRAGMA user_version = 2")
     bruta.commit()
     bruta.close()
     con = conexion.abrir()
-    assert conexion.version(con) == 3
-    assert len(categorias.nombres(con)) == 44
+    assert conexion.version(con) == esquema.VERSION_ESQUEMA == 4
+    assert len(categorias.nombres(con)) == 63
+    con.close()
+
+
+def test_migracion_4_respeta_categorias_creadas_por_el_usuario(carpeta_datos):
+    """Quien ya tenía la 1.4.0 pudo crear «educación física» a mano: no se duplica ni falla.
+    (SQLite solo iguala mayúsculas sin tilde: «EDUCACIÓN FÍSICA» sí se duplicaría.)"""
+    bruta = sqlite3.connect(rutas.ruta_base_datos())
+    bruta.executescript(esquema.MIGRACION_1 + esquema.MIGRACION_2 + esquema.MIGRACION_3)
+    bruta.execute("INSERT INTO categoria (nombre) VALUES ('educación física')")
+    bruta.execute("PRAGMA user_version = 3")
+    bruta.commit()
+    bruta.close()
+    con = conexion.abrir()
+    nombres = categorias.nombres(con)
+    assert len(nombres) == 63 and "educación física" in nombres and "Educación física" not in nombres
     con.close()
 
 
@@ -104,6 +120,16 @@ def test_migracion_3_en_una_base_de_datos_antigua(carpeta_datos):
     (["Fiction / Science Fiction / General"], ["Ciencia ficción"]),                  # Google Books
     (["Cocina española"], ["Gastronomía y cocina"]),
     (["Accessible book", "Protected DAISY"], []),                                    # ruido de Open Library
+    # Educación y deporte: la descripción del código manda sobre el código (más general)
+    (["SCGF - Nutrición deportiva", "SC - Deporte: temas generales"], ["Nutrición deportiva"]),
+    (["JNT - Didáctica de la educación física"], ["Educación física", "Didáctica y pedagogía"]),
+    (["MKS - Medicina deportiva y lesiones"], ["Medicina deportiva"]),
+    (["Educación física -- Enseñanza secundaria", "Oposiciones"], ["Educación física", "Oposiciones"]),
+    (["Sports medicine", "Physical therapy"], ["Medicina deportiva", "Fisioterapia y rehabilitación"]),
+    (["Psicología del deporte"], ["Psicología del deporte"]),                       # no «Psicología»
+    (["Fútbol -- Entrenamiento deportivo"], ["Entrenamiento y preparación física", "Deportes de equipo"]),
+    (["S - Deportes y actividades al aire libre"], ["Deportes"]),
+    (["JN - Educación"], ["Educación"]),
 ])
 def test_proponer_categorias(con, materias, esperadas):
     assert clasificar.proponer(materias, categorias.nombres(con)) == esperadas

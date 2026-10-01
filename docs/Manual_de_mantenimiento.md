@@ -250,11 +250,13 @@ Todo está en `servicios/importar.py`; la ventana es `interfaz/dialogo_importar.
 
 ### 4.8 Categorías (versión 1.4)
 
-- **Datos:** tablas `categoria` y `elemento_categoria` (migración 3, que también crea las 44 categorías iniciales en las bases de datos que ya existían). `Elemento.categorias` es una lista de nombres; `elementos.guardar` crea en el catálogo las que no existan (lo usa la importación).
+- **Datos:** tablas `categoria` y `elemento_categoria` (migración 3, que también crea las 44 categorías iniciales en las bases de datos que ya existían). La migración 4 (versión 1.4.1) añade 19 de educación y deporte con `INSERT OR IGNORE`: si el usuario ya tenía una con el mismo nombre, se respeta (ojo: SQLite solo iguala mayúsculas en letras sin tilde). **Para añadir más categorías iniciales en el futuro, crea otra migración igual**; no toques las anteriores. `Elemento.categorias` es una lista de nombres; `elementos.guardar` crea en el catálogo las que no existan (lo usa la importación).
 - **Búsqueda:** los nombres de las categorías se guardan en la columna `etiquetas` del índice FTS. Al renombrar o borrar una categoría, `datos/categorias.py` reindexa los elementos afectados. Filtro: `Filtros.categoria_id`. Columna nueva de la lista: «Categoría» (la 7).
 - **Propuesta automática** (`servicios/clasificar.py`): cada fuente deja en `DatosLibro.materias` cómo clasifica el libro.
   - Agencia del ISBN: códigos **Thema/BIC** (`FH - Obra de misterio y suspense`), traducidos con `CODIGOS` (gana el prefijo más largo). Los que empiezan por cifra (época, lugar, edad) se ignoran.
   - BNE (655/650), BnF (608/606), Open Library y Google Books: texto, buscado con `PALABRAS`.
+  - Antes de todo, los temas concretos de `ESPECIFICAS` (educación física, medicina deportiva, fútbol…) se buscan en cualquier materia, también en la descripción que acompaña al código: «SCGF - Nutrición deportiva» da *Nutrición deportiva* y no solo *Deportes*. Una materia puede dar varias («Fútbol -- Entrenamiento deportivo»).
+  - `GENERICAS`: una categoría general (*Novela*, *Deportes*, *Educación*, *Medicina y salud*, *Psicología*) se quita si ya hay una concreta de su ámbito.
   - Solo se proponen categorías que existan en el catálogo del usuario; como mucho 3; *Novela* se quita si ya hay un género de ficción concreto.
   - Para mejorar la propuesta, amplía `CODIGOS` o `PALABRAS`. La lista de códigos Thema está en <https://www.editeur.org/151/Thema/>.
 - **Ficha:** la propuesta solo se aplica si el usuario no ha elegido ninguna categoría. El campo se ve también en el modo sencillo.

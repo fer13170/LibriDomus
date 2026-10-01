@@ -160,6 +160,18 @@ INSERT INTO categoria (nombre) VALUES
     ('Educación'), ('Autoayuda y desarrollo personal'), ('Familia y crianza');
 """
 
-MIGRACIONES: list[str] = [MIGRACION_1, MIGRACION_2, MIGRACION_3]
+# Versión 4 (LibriDomus 1.4.1): categorías de educación, educación física y deporte.
+# OR IGNORE: si el usuario ya había creado alguna con ese nombre, se respeta la suya.
+MIGRACION_4 = """
+INSERT OR IGNORE INTO categoria (nombre) VALUES
+    ('Educación física'), ('Didáctica y pedagogía'), ('Libros de texto'), ('Oposiciones'),
+    ('Educación especial e inclusiva'), ('Entrenamiento y preparación física'), ('Medicina deportiva'),
+    ('Fisioterapia y rehabilitación'), ('Nutrición deportiva'), ('Psicología del deporte'),
+    ('Anatomía, fisiología y biomecánica'), ('Actividad física y salud'), ('Juegos y actividades recreativas'),
+    ('Expresión corporal y danza'), ('Deportes de equipo'), ('Deportes individuales'),
+    ('Actividades en la naturaleza'), ('Gestión deportiva'), ('Primeros auxilios');
+"""
+
+MIGRACIONES: list[str] = [MIGRACION_1, MIGRACION_2, MIGRACION_3, MIGRACION_4]
 
 VERSION_ESQUEMA = len(MIGRACIONES)
